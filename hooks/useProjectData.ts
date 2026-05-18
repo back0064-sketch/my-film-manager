@@ -1,31 +1,82 @@
 import { useState, useEffect } from 'react';
-import { FilmProject, Task } from '../types/project'; // 修正：這裡移除 ModuleId
-import { AVAILABLE_MODULES, ModuleId } from '../constants/modules'; // 修正：ModuleId 真正的家在這裡
+import { FilmProject, Task } from '../types/project';
+import { AVAILABLE_MODULES, ModuleId } from '../constants/modules';
+import { supabase } from '../lib/supabase'; // 🔌 引入雲端大腦連線
 
 export function useProjectData(projectId: string) {
   const [project, setProject] = useState<FilmProject | null>(null);
+  const [loading, setLoading] = useState<boolean>(true); // 雲端讀取狀態
 
+  // 1. 🔍 從雲端 Supabase 讀取資料
   useEffect(() => {
     if (!projectId) return;
-    const savedData = localStorage.getItem(projectId);
-    if (savedData) {
-      const parsedData = JSON.parse(savedData);
-      parsedData.collapsedModules = parsedData.collapsedModules || [];
-      parsedData.moduleConfigs = (parsedData.moduleConfigs || []).map((c: any) => ({
-        ...c,
-        collapsedStatuses: c.collapsedStatuses || []
-      }));
-      if (parsedData.isFlatRate === undefined) parsedData.isFlatRate = false;
-      setProject(parsedData);
+
+    async function fetchProjectFromCloud() {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('film_projects')
+          .select('project_data')
+          .eq('id', projectId)
+          .single();
+
+        if (error) {
+          console.log('💡 雲端尚無此專案，嘗試讀取本地瀏覽器過渡...', error.message);
+          // 雲端沒有就讀本地
+          const savedData = localStorage.getItem(projectId);
+          if (savedData) {
+            setProject(JSON.parse(savedData));
+          }
+        } else if (data && data.project_data) {
+          // ☁️ 成功撈到雲端大腦資料，完美注入！
+          const parsedData = data.project_data;
+          parsedData.collapsedModules = parsedData.collapsedModules || [];
+          parsedData.moduleConfigs = (parsedData.moduleConfigs || []).map((c: any) => ({
+            ...c,
+            collapsedStatuses: c.collapsedStatuses || []
+          }));
+          if (parsedData.isFlatRate === undefined) parsedData.isFlatRate = false;
+          setProject(parsedData);
+        }
+      } catch (err) {
+        console.error('❌ 讀取雲端失敗:', err);
+      } finally {
+        setLoading(false);
+      }
     }
+
+    fetchProjectFromCloud();
   }, [projectId]);
 
+  // 2. ⚡ 當資料有任何變動，自動「秒同步」推上雲端（內建 0.5 秒防抖）
   useEffect(() => {
-    if (project && projectId) {
-      localStorage.setItem(projectId, JSON.stringify(project));
-    }
-  }, [project, projectId]);
+    if (!project || !projectId || loading) return;
 
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        // 同步寫入本地與雲端（雙保險防丟機制）
+        localStorage.setItem(projectId, JSON.stringify(project));
+
+        await supabase
+          .from('film_projects')
+          .upsert({
+            id: projectId,
+            name: project.name || '未命名專案',
+            project_data: project,
+            updated_at: new Date().toISOString()
+          });
+        console.log('☁️ [Supabase] 雲端即時同步成功！');
+      } catch (err) {
+        console.error('❌ 雲端同步失敗:', err);
+      }
+    }, 500); // 停手 0.5 秒後才發送，極致流暢
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [project, projectId, loading]);
+
+  // -------------------------------------------------------------
+  // 以下為原本強大的三大模組防呆連動邏輯（核心完全不變，完美承接）
+  // -------------------------------------------------------------
   const moveStatus = (mId: ModuleId, statusName: string, direction: 'up' | 'down') => {
     if (!project) return;
     const newConfigs = project.moduleConfigs.map(c => {
@@ -49,7 +100,6 @@ export function useProjectData(projectId: string) {
 
   const updateTask = (taskId: string, updates: Partial<Task>) => {
     if (!project) return;
-    
     let updatedTasks = project.tasks.map(t => t.id === taskId ? { ...t, ...updates, updatedAt: new Date() } : t);
     const currentTask = updatedTasks.find(t => t.id === taskId);
     
@@ -94,7 +144,6 @@ export function useProjectData(projectId: string) {
         }
       }
     }
-    
     setProject({ ...project, tasks: updatedTasks });
   };
 
@@ -102,7 +151,6 @@ export function useProjectData(projectId: string) {
   
   const addTask = (title: string, mId: ModuleId, s: string) => {
     if (!project) return;
-    
     const newTaskId = crypto.randomUUID();
     const newTask: Task = { id: newTaskId, moduleId: mId, title, status: s, note: "", subTasks: [], assets: [], amount: 0, isPaid: false, updatedAt: new Date() };
     let nextTasks = [...project.tasks, newTask];
@@ -119,7 +167,7 @@ export function useProjectData(projectId: string) {
           moduleId: 'Finance',
           title: `${title} (${suffix})`,
           status: firstFinanceStatus,
-          note: `💡 此帳目由系統全自動防呆連動建立。連動來源：【${AVAILABLE_MODULES.find(m=>m.id===mId)?.name}】。`,
+          note: `💡 此帳目由系統全自動防呆連動建立。`,
           subTasks: [],
           assets: [],
           amount: 0,
@@ -127,12 +175,10 @@ export function useProjectData(projectId: string) {
           linkedTaskId: newTaskId,
           updatedAt: new Date()
         };
-        
         newTask.linkedTaskId = financeTaskId;
         nextTasks.push(linkedFinanceTask);
       }
     }
-    
     setProject({ ...project, tasks: nextTasks });
   };
   
@@ -140,7 +186,6 @@ export function useProjectData(projectId: string) {
     if (!project) return;
     const targetTask = project.tasks.find(t => t.id === id);
     let nextTasks = project.tasks.filter(t => t.id !== id);
-    
     if (targetTask?.linkedTaskId) {
       nextTasks = nextTasks.filter(t => t.id !== targetTask.linkedTaskId);
     }
@@ -169,5 +214,5 @@ export function useProjectData(projectId: string) {
     setProject({ ...project, moduleConfigs: newConfigs });
   };
 
-  return { project, addTask, deleteTask, updateTask, updateProject, addStatus, deleteStatus, toggleStatusCollapse, moveStatus };
+  return { project, loading, addTask, deleteTask, updateTask, updateProject, addStatus, deleteStatus, toggleStatusCollapse, moveStatus };
 }
