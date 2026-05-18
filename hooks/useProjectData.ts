@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FilmProject, Task, ModuleId } from '../types/project';
-import { AVAILABLE_MODULES } from '../constants/modules';
+import { FilmProject, Task } from '../types/project'; // 修正：這裡移除 ModuleId
+import { AVAILABLE_MODULES, ModuleId } from '../constants/modules'; // 修正：ModuleId 真正的家在這裡
 
 export function useProjectData(projectId: string) {
   const [project, setProject] = useState<FilmProject | null>(null);
@@ -15,7 +15,6 @@ export function useProjectData(projectId: string) {
         ...c,
         collapsedStatuses: c.collapsedStatuses || []
       }));
-      // 預設為拆件制 (false)
       if (parsedData.isFlatRate === undefined) parsedData.isFlatRate = false;
       setProject(parsedData);
     }
@@ -42,14 +41,12 @@ export function useProjectData(projectId: string) {
     setProject({ ...project, moduleConfigs: newConfigs });
   };
 
-  // 雙向同步名稱對照表
   const triggerModules: Record<string, string> = {
     'Scripting': '腳本費',
     'OnSite': '拍攝費',
     'PostProduction': '剪輯費'
   };
 
-  // 修改任務 (支援多向鏡像名稱防呆)
   const updateTask = (taskId: string, updates: Partial<Task>) => {
     if (!project) return;
     
@@ -57,19 +54,16 @@ export function useProjectData(projectId: string) {
     const currentTask = updatedTasks.find(t => t.id === taskId);
     
     if (currentTask) {
-      // --- 名稱同步防呆引擎 ---
       if (updates.title && currentTask.linkedTaskId) {
         updatedTasks = updatedTasks.map(t => {
           if (t.id === currentTask.linkedTaskId) {
             let nextLinkedTitle = updates.title!;
             if (currentTask.moduleId === 'Finance') {
-              // 從財務改名：移除所有可能的財務後綴，還原片名
               nextLinkedTitle = updates.title!
                 .replace(' (腳本費)', '')
                 .replace(' (拍攝費)', '')
                 .replace(' (剪輯費)', '');
             } else if (triggerModules[currentTask.moduleId]) {
-              // 從工作看板改名：自動補上該看板對應後綴
               nextLinkedTitle = `${updates.title} (${triggerModules[currentTask.moduleId]})`;
             }
             return { ...t, title: nextLinkedTitle, updatedAt: new Date() };
@@ -78,7 +72,6 @@ export function useProjectData(projectId: string) {
         });
       }
 
-      // 財務跳轉
       if (currentTask.moduleId === 'Finance') {
         const config = project.moduleConfigs.find(c => c.moduleId === 'Finance');
         const statuses = config?.customStatuses || [];
@@ -107,7 +100,6 @@ export function useProjectData(projectId: string) {
 
   const updateProject = (u: Partial<FilmProject>) => project && setProject({ ...project, ...u });
   
-  // 新增任務 (全包判斷與全線連動)
   const addTask = (title: string, mId: ModuleId, s: string) => {
     if (!project) return;
     
@@ -115,13 +107,12 @@ export function useProjectData(projectId: string) {
     const newTask: Task = { id: newTaskId, moduleId: mId, title, status: s, note: "", subTasks: [], assets: [], amount: 0, isPaid: false, updatedAt: new Date() };
     let nextTasks = [...project.tasks, newTask];
     
-    // --- 核心防呆：只有在「非全包(整包)」模式下，三大看板才會自動派發帳目 ---
     if (!project.isFlatRate && triggerModules[mId]) {
       const financeConfig = project.moduleConfigs.find(c => c.moduleId === 'Finance');
       if (financeConfig && financeConfig.customStatuses.length > 0) {
         const firstFinanceStatus = financeConfig.customStatuses[0];
         const financeTaskId = crypto.randomUUID();
-        const suffix = triggerModules[mId]; // 拿取 腳本費/拍攝費/剪輯費 後綴
+        const suffix = triggerModules[mId];
         
         const linkedFinanceTask: Task = {
           id: financeTaskId,
@@ -145,7 +136,6 @@ export function useProjectData(projectId: string) {
     setProject({ ...project, tasks: nextTasks });
   };
   
-  // 刪除連帶機制
   const deleteTask = (id: string) => {
     if (!project) return;
     const targetTask = project.tasks.find(t => t.id === id);
