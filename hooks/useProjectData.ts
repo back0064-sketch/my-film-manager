@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FilmProject, Task } from '../types/project';
 import { AVAILABLE_MODULES, ModuleId } from '../constants/modules';
-import { supabase } from '@/lib/supabase.ts; //  🔌 引入雲端大腦連線
+import { supabase } from '@/lib/supabase'; // 🔌 引入雲端大腦連線
 
 export function useProjectData(projectId: string) {
   const [project, setProject] = useState<FilmProject | null>(null);
@@ -28,8 +28,8 @@ export function useProjectData(projectId: string) {
             setProject(JSON.parse(savedData));
           }
         } else if (data && data.project_data) {
-          // ☁️ 成功撈到雲端大腦資料，完美注入！
-          const parsedData = data.project_data;
+          // ☁️ 成功撈到雲端大腦資料，加上 as any 破解 TypeScript 嚴格檢查！
+          const parsedData = data.project_data as any;
           parsedData.collapsedModules = parsedData.collapsedModules || [];
           parsedData.moduleConfigs = (parsedData.moduleConfigs || []).map((c: any) => ({
             ...c,
@@ -62,7 +62,7 @@ export function useProjectData(projectId: string) {
           .upsert({
             id: projectId,
             name: project.name || '未命名專案',
-            project_data: project,
+            project_data: project as any, // 💡 加上 as any 順利通過雲端打包優化
             updated_at: new Date().toISOString()
           });
         console.log('☁️ [Supabase] 雲端即時同步成功！');
