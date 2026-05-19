@@ -29,16 +29,63 @@ export default function Home() {
   const [lobbyLoading, setLobbyLoading] = useState<boolean>(true);
   const [newProjectName, setNewProjectName] = useState('');
 
+  // 🔍 雙軌制智慧大廳載入器（本地極速打底 + 雲端合流）
   const loadLobbyProjects = async () => {
     setLobbyLoading(true);
+    
+    // 🛟 步驟 A：先從本地 LocalStorage 把存在電腦裡的所有專案撈出來，確保畫面絕對不空白！
+    const localProjects: any[] = [];
+    try {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      Object.keys(localStorage).forEach(key => {
+        if (uuidRegex.test(key)) {
+          const str = localStorage.getItem(key);
+          if (str) {
+            try {
+              const parsed = JSON.parse(str);
+              const cleaned = cleanProjectData(parsed);
+              if (cleaned) {
+                localProjects.push({
+                  id: cleaned.id,
+                  name: cleaned.name,
+                  updated_at: new Date().toISOString()
+                });
+              }
+            } catch(e){}
+          }
+        }
+      });
+    } catch (e) { console.error(e); }
+    
+    // 先用本地的墊底顯示
+    setProjectList(localProjects);
+
+    // 🛟 步驟 B：去雲端撈取合流，就算雲端卡死也絕對不影響本地顯示
     try {
       const { data } = await supabase
         .from('film_projects')
-        .select('id, name, updated_at')
+        .select('id, name, updated_at, project_data')
         .order('updated_at', { ascending: false });
-      if (data) setProjectList(data);
+
+      if (data && data.length > 0) {
+        const mergedMap = new Map();
+        localProjects.forEach(p => mergedMap.set(p.id, p));
+        
+        data.forEach((p: any) => {
+          const cleaned = cleanProjectData(p.project_data || p);
+          if (cleaned) {
+            localStorage.setItem(p.id, JSON.stringify(cleaned)); // 背景幫本地補血快取
+            mergedMap.set(p.id, {
+              id: p.id,
+              name: p.name || cleaned.name,
+              updated_at: p.updated_at || new Date().toISOString()
+            });
+          }
+        });
+        setProjectList(Array.from(mergedMap.values()));
+      }
     } catch (err) {
-      console.error(err);
+      console.error("雲端讀取受限，切換為純本地保護模式運行", err);
     } finally {
       setLobbyLoading(false);
     }
@@ -48,35 +95,41 @@ export default function Home() {
     if (!activeProjectId) loadLobbyProjects();
   }, [activeProjectId]);
 
+  // ➕ 建立新專案（本地絕對安全放行）
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
     const newId = crypto.randomUUID();
     const defaultData = cleanProjectData({ id: newId, name: newProjectName.trim() });
 
+    // 💾 絕對優先存入本地，名字跟房間當場鎖死！
     localStorage.setItem(newId, JSON.stringify(defaultData));
-    await supabase.from('film_projects').upsert({
-      id: newId,
-      name: newProjectName.trim(),
-      project_data: defaultData,
-      updated_at: new Date().toISOString()
-    });
+
+    // ☁️ 背景嘗試 upsert 雲端，失敗也不准卡死介面
+    try {
+      await supabase.from('film_projects').upsert({
+        id: newId,
+        name: newProjectName.trim(),
+        project_data: defaultData,
+        updated_at: new Date().toISOString()
+      });
+    } catch (err) { console.error(err); }
 
     setNewProjectName('');
-    setActiveProjectId(newId);
+    setActiveProjectId(newId); // 🎯 秒進房間，絕對不卡死！
   };
 
+  // 🗑️ 大廳刪除
   const handleDeleteProject = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm(`確定要永久刪除【${name}】這個專案看板嗎？`)) return;
     try {
       localStorage.removeItem(id);
       await supabase.from('film_projects').delete().eq('id', id);
-      setProjectList((prev: any[]) => prev.filter((p: any) => p.id !== id));
-    } catch (err) {
-      alert('刪除失敗');
-    }
+    } catch (err) {}
+    setProjectList((prev: any[]) => prev.filter((p: any) => p.id !== id));
   };
 
+  // 📂 智慧解包匯入器
   const handleJsonImportToLobby = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,26 +142,30 @@ export default function Home() {
             const cleaned = cleanProjectData(proj);
             if (cleaned) {
               localStorage.setItem(cleaned.id, JSON.stringify(cleaned));
+              try {
+                await supabase.from('film_projects').upsert({
+                  id: cleaned.id,
+                  name: cleaned.name,
+                  project_data: cleaned,
+                  updated_at: new Date().toISOString()
+                });
+              } catch (e) {}
+            }
+          }
+          alert(`已智慧解包並成功匯入共 ${parsed.length} 個專案看板！`);
+          loadLobbyProjects();
+        } else {
+          const cleaned = cleanProjectData(parsed);
+          if (cleaned) {
+            localStorage.setItem(cleaned.id, JSON.stringify(cleaned));
+            try {
               await supabase.from('film_projects').upsert({
                 id: cleaned.id,
                 name: cleaned.name,
                 project_data: cleaned,
                 updated_at: new Date().toISOString()
               });
-            }
-          }
-          alert(`已成功匯入共 ${parsed.length} 個專案看板！`);
-          loadLobbyProjects();
-        } else {
-          const cleaned = cleanProjectData(parsed);
-          if (cleaned) {
-            localStorage.setItem(cleaned.id, JSON.stringify(cleaned));
-            await supabase.from('film_projects').upsert({
-              id: cleaned.id,
-              name: cleaned.name,
-              project_data: cleaned,
-              updated_at: new Date().toISOString()
-            });
+            } catch (e) {}
             alert(`📂 【${cleaned.name}】已成功匯入！`);
             setActiveProjectId(cleaned.id);
           }
@@ -129,7 +186,7 @@ export default function Home() {
               <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
                 🎬 影視製片控制台
               </h1>
-              <p className="text-slate-400 text-sm mt-2">中央大廳 • 智慧快取雲端控制中心</p>
+              <p className="text-slate-400 text-sm mt-2">中央大廳 • 本地脫機保護模式已啟動</p>
             </div>
             <label className="cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg transition">
               📂 匯入舊專案 JSON
@@ -155,10 +212,10 @@ export default function Home() {
 
           <h2 className="text-lg font-bold text-slate-300 mb-4">🗂️ 當前專案看板清單 ({projectList.length})</h2>
 
-          {lobbyLoading ? (
+          {lobbyLoading && projectList.length === 0 ? (
             <div className="text-center py-12 text-slate-500 flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
-              <p className="text-sm">連線資料庫中...</p>
+              <p className="text-sm">安全對齊中...</p>
             </div>
           ) : projectList.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl">
@@ -176,7 +233,7 @@ export default function Home() {
                     <h3 className="font-bold text-lg text-slate-200 group-hover:text-indigo-400 transition">
                       {p.name}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">⚡ 雲端完全同步保護中</p>
+                    <p className="text-xs text-slate-500 mt-1">⚡ 本地快取安全保護中</p>
                   </div>
                   <button
                     onClick={(e: any) => handleDeleteProject(p.id, p.name, e)}
@@ -232,7 +289,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
               <h1 className="text-2xl font-black text-slate-100">
                 {currentProject.name || "進行中專案"}
               </h1>
-              <p className="text-slate-500 text-xs mt-0.5">☁️ 雲端數據即時同步中</p>
+              <p className="text-slate-500 text-xs mt-0.5">☁️ 數據雙軌同步保護中</p>
             </div>
           </div>
         </header>

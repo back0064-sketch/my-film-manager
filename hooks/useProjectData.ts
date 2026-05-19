@@ -34,7 +34,7 @@ export function useProjectData(projectId: string) {
           const cleaned = cleanProjectData(JSON.parse(localData));
           if (cleaned) {
             setProject(cleaned);
-            setLoading(false); // 本地有資料就秒開畫面！
+            setLoading(false); // 本地有資料就秒開畫面，拒絕等待網路！
           }
         } catch (e) { console.error(e); }
       } else {
@@ -85,16 +85,16 @@ export function useProjectData(projectId: string) {
             project_data: project, 
             updated_at: new Date().toISOString()
           });
-        console.log('☁️ [Supabase] 雲端同步大成功');
+        console.log('☁️ [Supabase] 雲端即時同步');
       } catch (err) {
-        console.error('❌ 雲端備份失敗:', err);
+        console.error('❌ 雲端同步失敗:', err);
       }
     }, 600);
 
     return () => clearTimeout(delayDebounceFn);
   }, [project, projectId, loading]);
 
-  // 🛠️ 核心看板操作函數（全部加強即時鎖定存檔）
+  // 🛠️ 看板核心操作（全面加強即時本地鎖定存檔，雲端關閉也不會遺失）
   const addTask = (title: string, moduleId: string, status: string) => {
     if (!project) return;
     const newTask = {
