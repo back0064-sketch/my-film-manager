@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// 🧼 格式自動解包大師：不管是雲端撈的、本地存的、還是舊JSON，一律拆包裝成最乾淨的看板格式
-function cleanProjectData(raw: any) {
+// 🧼 智慧格式清洗大師
+function cleanProjectData(raw: any, fallbackId: string) {
   if (!raw) return null;
   let target = raw.project_data ? raw.project_data : raw;
   return {
-    id: target.id || raw.id,
-    name: target.name || raw.name || "未命名專案",
+    id: fallbackId || target.id || raw.id,
+    name: target.name || target.title || target.projectName || target.project_name || raw.name || "未命名影視專案",
     isFlatRate: target.isFlatRate || false,
-    tasks: target.tasks || [],
+    tasks: Array.isArray(target.tasks) ? target.tasks : [],
     moduleConfigs: target.moduleConfigs && target.moduleConfigs.length > 0 ? target.moduleConfigs : [
       { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
       { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'] },
@@ -23,7 +23,7 @@ export function useProjectData(projectId: string) {
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // 1. 🔍 讀取資料：秒開快取優先
+  // 1. 🔍 讀取資料
   useEffect(() => {
     if (!projectId) return;
 
@@ -31,14 +31,12 @@ export function useProjectData(projectId: string) {
       const localData = localStorage.getItem(projectId);
       if (localData) {
         try {
-          const cleaned = cleanProjectData(JSON.parse(localData));
+          const cleaned = cleanProjectData(JSON.parse(localData), projectId);
           if (cleaned) {
             setProject(cleaned);
-            setLoading(false); // 本地有資料就秒開畫面，拒絕等待網路！
+            setLoading(false);
           }
         } catch (e) { console.error(e); }
-      } else {
-        setLoading(true);
       }
 
       try {
@@ -49,13 +47,13 @@ export function useProjectData(projectId: string) {
           .maybeSingle();
 
         if (data && data.project_data) {
-          const cleaned = cleanProjectData(data.project_data);
+          const cleaned = cleanProjectData(data.project_data, projectId);
           if (cleaned) {
             setProject(cleaned);
             localStorage.setItem(projectId, JSON.stringify(cleaned));
           }
         } else if (!localData) {
-          const blank = cleanProjectData({ id: projectId });
+          const blank = cleanProjectData({ id: projectId }, projectId);
           setProject(blank);
           localStorage.setItem(projectId, JSON.stringify(blank));
         }
@@ -69,14 +67,13 @@ export function useProjectData(projectId: string) {
     fetchProject();
   }, [projectId]);
 
-  // 2. ⚡ 背景自動即時同步
+  // 2. ⚡ 背景同步
   useEffect(() => {
     if (!project || !projectId || loading || Array.isArray(project)) return;
 
     const delayDebounceFn = setTimeout(async () => {
       try {
         localStorage.setItem(projectId, JSON.stringify(project));
-
         await supabase
           .from('film_projects')
           .upsert({
@@ -85,7 +82,6 @@ export function useProjectData(projectId: string) {
             project_data: project, 
             updated_at: new Date().toISOString()
           });
-        console.log('☁️ [Supabase] 雲端即時同步');
       } catch (err) {
         console.error('❌ 雲端同步失敗:', err);
       }
@@ -94,18 +90,9 @@ export function useProjectData(projectId: string) {
     return () => clearTimeout(delayDebounceFn);
   }, [project, projectId, loading]);
 
-  // 🛠️ 看板核心操作（全面加強即時本地鎖定存檔，雲端關閉也不會遺失）
   const addTask = (title: string, moduleId: string, status: string) => {
     if (!project) return;
-    const newTask = {
-      id: crypto.randomUUID(),
-      moduleId,
-      title,
-      status,
-      amount: 0,
-      isPaid: false,
-      updatedAt: new Date()
-    };
+    const newTask = { id: crypto.randomUUID(), moduleId, title, status, amount: 0, isPaid: false, updatedAt: new Date() };
     const updated = { ...project, tasks: [...project.tasks, newTask] };
     setProject(updated);
     localStorage.setItem(projectId, JSON.stringify(updated));
