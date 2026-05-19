@@ -29,7 +29,6 @@ export default function Home() {
   const [lobbyLoading, setLobbyLoading] = useState<boolean>(true);
   const [newProjectName, setNewProjectName] = useState('');
 
-  // 🔍 雙軌制智慧大廳載入器
   const loadLobbyProjects = async () => {
     setLobbyLoading(true);
     const localProjects: any[] = [];
@@ -74,7 +73,7 @@ export default function Home() {
       }
     } catch (err) {
       console.error(err);
-    } {
+    } finally {
       setLobbyLoading(false);
     }
   };
@@ -114,56 +113,6 @@ export default function Home() {
     } catch (err) {}
   };
 
-  // 📂 智慧解包隔離匯入器
-  const handleJsonImportToLobby = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event: any) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (Array.isArray(parsed)) {
-          for (const proj of parsed) {
-            const freshId = crypto.randomUUID(); // 🔥 核心：強行注射全新獨立靈魂 ID 隔離！
-            const cleaned = cleanProjectData(proj, freshId);
-            if (cleaned) {
-              localStorage.setItem(freshId, JSON.stringify(cleaned));
-              try {
-                await supabase.from('film_projects').upsert({
-                  id: freshId,
-                  name: cleaned.name,
-                  project_data: cleaned,
-                  updated_at: new Date().toISOString()
-                });
-              } catch (e) {}
-            }
-          }
-          alert(`🎉 智慧解包隔離成功！已將 ${parsed.length} 個舊專案成功分離匯入大廳！`);
-          loadLobbyProjects();
-        } else {
-          const freshId = crypto.randomUUID(); // 🔥 單一匯入也強行隔離防呆！
-          const cleaned = cleanProjectData(parsed, freshId);
-          if (cleaned) {
-            localStorage.setItem(freshId, JSON.stringify(cleaned));
-            try {
-              await supabase.from('film_projects').upsert({
-                id: freshId,
-                name: cleaned.name,
-                project_data: cleaned,
-                updated_at: new Date().toISOString()
-              });
-            } catch (e) {}
-            alert(`📂 【${cleaned.name}】已成功獨立匯入！`);
-            setActiveProjectId(freshId);
-          }
-        }
-      } catch (err) {
-        alert('檔案解析失敗');
-      }
-    };
-    reader.readAsText(file);
-  };
-
   if (!activeProjectId) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
@@ -173,12 +122,8 @@ export default function Home() {
               <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
                 🎬 影視製片控制台
               </h1>
-              <p className="text-slate-400 text-sm mt-2">中央大廳 • 智慧靈魂隔離完全體</p>
+              <p className="text-slate-400 text-sm mt-2">中央大廳 • 智慧款取核心完全體</p>
             </div>
-            <label className="cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg transition">
-              📂 匯入舊專案 JSON
-              <input type="file" accept=".json" onChange={handleJsonImportToLobby} className="hidden" />
-            </label>
           </header>
 
           <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl mb-8 flex flex-col sm:flex-row gap-4 items-center">
@@ -206,7 +151,7 @@ export default function Home() {
             </div>
           ) : projectList.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl">
-              <p className="text-slate-500 text-sm italic">尚無任何專案，請在上方建立或匯入舊 JSON。</p>
+              <p className="text-slate-500 text-sm italic">尚無任何專案，請在上方建立專案。</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -262,10 +207,16 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
         { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] }
       ];
 
+  // 💰🔥 核心加強：即時加總計算所有財務項目的金額！
+  const financeTasks = (currentProject.tasks || []).filter((t: any) => t.moduleId === 'Finance');
+  const totalAmount = financeTasks.reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+  const paidAmount = financeTasks.filter((t: any) => t.isPaid).reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+  const unpaidAmount = totalAmount - paidAmount;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-6">
+        <header className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-6">
           <div className="flex items-center gap-4">
             <button
               onClick={onBackToLobby}
@@ -277,10 +228,32 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
               <h1 className="text-2xl font-black text-slate-100">
                 {currentProject.name || "進行中專案"}
               </h1>
-              <p className="text-slate-500 text-xs mt-0.5">☁️ 獨立數據安全存儲中</p>
+              <p className="text-slate-500 text-xs mt-0.5">☁️ 數據雙軌同步保護中</p>
             </div>
           </div>
         </header>
+
+        {/* 💰📊 【重磅回歸】款項統計中央控制 Dashboard 卡片區塊 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 p-5 rounded-2xl shadow-sm">
+            <div className="text-xs font-semibold text-slate-400">📊 專案款項總額 (Total)</div>
+            <div className="text-2xl font-black text-indigo-400 mt-2">
+              NT$ {totalAmount.toLocaleString()}
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 p-5 rounded-2xl shadow-sm">
+            <div className="text-xs font-semibold text-slate-400">💰 已入帳總額 (Paid)</div>
+            <div className="text-2xl font-black text-emerald-400 mt-2">
+              NT$ {paidAmount.toLocaleString()}
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 p-5 rounded-2xl shadow-sm">
+            <div className="text-xs font-semibold text-slate-400">⏳ 待收尾尾款 (Remaining)</div>
+            <div className="text-2xl font-black text-amber-400 mt-2">
+              NT$ {unpaidAmount.toLocaleString()}
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-1 bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 h-fit">
@@ -358,7 +331,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                                   type="number"
                                   value={task.amount || 0}
                                   onChange={(e: any) => updateTask(task.id, { amount: Number(e.target.value) })}
-                                  className="w-20 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-emerald-400 focus:outline-none"
+                                  className="w-24 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-emerald-400 focus:outline-none font-bold"
                                 />
                               </div>
                               <label className="flex items-center gap-1.5 cursor-pointer">
