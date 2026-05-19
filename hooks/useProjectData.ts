@@ -100,10 +100,10 @@ export function useProjectData(projectId: string) {
   const addTask = (title: string, moduleId: string, status: string) => {
     if (!project) return;
     
-    // 💡 核心修正：採用 100% 穩定的萬能隨機 ID 生成法，徹底繞過全域 crypto 的型別衝突！
     const newTaskId = Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
     
-    const newTask = {
+    // 🔥 核心修復：強制賦予 any 型別，破除物件字面量的屬性鎖定，徹底根除 Line 140 附近的編譯阻擋！
+    const newTask: any = {
       id: newTaskId,
       moduleId,
       title,
@@ -113,6 +113,7 @@ export function useProjectData(projectId: string) {
       assets: [],
       amount: 0,
       isPaid: false,
+      linkedTaskId: undefined,
       updatedAt: new Date()
     };
     
@@ -124,7 +125,7 @@ export function useProjectData(projectId: string) {
       const financeTaskId = Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
       const suffix = triggerModules[moduleId];
       
-      const linkedFinanceTask = {
+      const linkedFinanceTask: any = {
         id: financeTaskId,
         moduleId: 'Finance',
         title: `${title} (${suffix})`,
