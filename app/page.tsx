@@ -54,7 +54,6 @@ export default function Home() {
       ]
     };
 
-    // 包裹成正確的資料庫格式外殼
     const dbPayload = {
       id: newId,
       name: newProjectName.trim(),
@@ -101,7 +100,6 @@ export default function Home() {
             const id = proj.id || crypto.randomUUID();
             const name = proj.name || "未命名影視專案";
             
-            // 確保每一筆都帶有正確的 project_data 外殼
             const cleanProj = proj.project_data ? proj : { id, name, project_data: proj };
 
             localStorage.setItem(id, JSON.stringify(cleanProj));
@@ -224,8 +222,6 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [activeModule, setActiveModule] = useState<string>('Scripting');
 
-  // 🔥💡 【破案核心金手指】：自動撕開包裝紙！
-  // 如果發現傳進來的專案外層包了 project_data，自動往下取一層，否則取自身
   const rawProject: any = project;
   const currentProject = rawProject && rawProject.project_data ? rawProject.project_data : (rawProject || { name: "載入中專案...", tasks: [], moduleConfigs: [] });
 
@@ -238,7 +234,6 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
     );
   }
 
-  // 確保一定能拿到 moduleConfigs 陣列，防止狀態欄蒸發
   const configs = currentProject.moduleConfigs && currentProject.moduleConfigs.length > 0
     ? currentProject.moduleConfigs
     : [
@@ -300,7 +295,8 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newTaskTitle.trim()) {
-                    const config = configs.find(c => c.moduleId === activeModule);
+                    // 🔥💡 修正處：明確對 c 貼上 any 標籤破除嚴格檢查！
+                    const config = configs.find((c: any) => c.moduleId === activeModule);
                     const firstStatus = config?.customStatuses?.[0] || '未分類';
                     addTask(newTaskTitle.trim(), activeModule as any, firstStatus);
                     setNewTaskTitle('');
@@ -311,7 +307,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {(configs.find(c => c.moduleId === activeModule)?.customStatuses || []).map((status) => {
+              {(configs.find((c: any) => c.moduleId === activeModule)?.customStatuses || []).map((status) => {
                 const moduleTasks = (currentProject.tasks || []).filter((t: any) => t.moduleId === activeModule && t.status === status);
                 return (
                   <div key={status} className="bg-slate-900/20 rounded-xl border border-slate-800 p-4 flex flex-col min-h-[350px]">
