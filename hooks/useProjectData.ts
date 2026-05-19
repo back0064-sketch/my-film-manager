@@ -1,11 +1,24 @@
 import { useState, useEffect } from 'react';
 import { FilmProject, Task } from '../types/project';
-import { AVAILABLE_MODULES, ModuleId } from '../constants/modules';
-import { supabase } from '../lib/supabase'; // 🔌 引入雲端大腦連線
+import { ModuleId } from '../constants/modules';
+import { supabase } from '@/lib/supabase';
+
+const DEFAULT_PROJECT: FilmProject = {
+  name: "Man's Game 全新雲端專案",
+  isFlatRate: false,
+  tasks: [],
+  moduleConfigs: [
+    { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'], collapsedStatuses: [] },
+    { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'], collapsedStatuses: [] },
+    { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'], collapsedStatuses: [] },
+    { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'], collapsedStatuses: [] }
+  ]
+};
 
 export function useProjectData(projectId: string) {
+  // 💡 調整初始狀態，防止因雲端全空導致按鈕被鎖死
   const [project, setProject] = useState<FilmProject | null>(null);
-  const [loading, setLoading] = useState<boolean>(true); // 雲端讀取狀態
+  const [loading, setLoading] = useState<boolean>(true);
 
   // 1. 🔍 從雲端 Supabase 讀取資料
   useEffect(() => {
@@ -18,17 +31,14 @@ export function useProjectData(projectId: string) {
           .from('film_projects')
           .select('project_data')
           .eq('id', projectId)
-          .single();
+          .maybeSingle(); // 防止沒資料時中斷編譯
 
         if (error) {
-          console.log('💡 雲端尚無此專案，嘗試讀取本地瀏覽器過渡...', error.message);
-          // 雲端沒有就讀本地
-          const savedData = localStorage.getItem(projectId);
-          if (savedData) {
-            setProject(JSON.parse(savedData));
-          }
-        } else if (data && data.project_data) {
-          // ☁️ 成功撈到雲端大腦資料，加上 as any 破解 TypeScript 嚴格檢查！
+          console.log('💡 雲端資料庫目前為空，準備載入初始備用線路...');
+        }
+
+        if (data && data.project_data) {
+          // ☁️ 雲端有資料，完美注入
           const parsedData = data.project_data as any;
           parsedData.collapsedModules = parsedData.collapsedModules || [];
           parsedData.moduleConfigs = (parsedData.moduleConfigs || []).map((c: any) => ({
@@ -37,9 +47,19 @@ export function useProjectData(projectId: string) {
           }));
           if (parsedData.isFlatRate === undefined) parsedData.isFlatRate = false;
           setProject(parsedData);
+        } else {
+          // 🏠 雲端沒資料，找本地瀏覽器
+          const savedData = localStorage.getItem(projectId);
+          if (savedData) {
+            setProject(JSON.parse(savedData));
+          } else {
+            // 🆕 兩邊都沒資料，直接解鎖初始範本，防止點擊沒反應！
+            setProject({ ...DEFAULT_PROJECT, id: projectId } as any);
+          }
         }
       } catch (err) {
-        console.error('❌ 讀取雲端失敗:', err);
+        console.error('❌ 讀取例外失敗:', err);
+        setProject(DEFAULT_PROJECT);
       } finally {
         setLoading(false);
       }
@@ -48,35 +68,39 @@ export function useProjectData(projectId: string) {
     fetchProjectFromCloud();
   }, [projectId]);
 
-  // 2. ⚡ 當資料有任何變動，自動「秒同步」推上雲端（內建 0.5 秒防抖）
+  // 2. ⚡ 當資料變動，自動同步推上雲端
   useEffect(() => {
     if (!project || !projectId || loading) return;
 
     const delayDebounceFn = setTimeout(async () => {
       try {
-        // 同步寫入本地與雲端（雙保險防丟機制）
         localStorage.setItem(projectId, JSON.stringify(project));
 
         await supabase
           .from('film_projects')
           .upsert({
             id: projectId,
-            nname: (project as any).name || '未命名專案',
-            project_data: project as any, // 💡 加上 as any 順利通過雲端打包優化
+            name: (project as any).name || '未命名專案',
+            project_data: project as any,
             updated_at: new Date().toISOString()
           });
         console.log('☁️ [Supabase] 雲端即時同步成功！');
       } catch (err) {
         console.error('❌ 雲端同步失敗:', err);
       }
-    }, 500); // 停手 0.5 秒後才發送，極致流暢
+    }, 500);
 
     return () => clearTimeout(delayDebounceFn);
   }, [project, projectId, loading]);
 
-  // -------------------------------------------------------------
-  // 以下為原本強大的三大模組防呆連動邏輯（核心完全不變，完美承接）
-  // -------------------------------------------------------------
+  // 🛠️ 修正：允許直接覆蓋全空狀態（還原/匯入專用金手指）
+  const updateProject = (u: any) => {
+    setProject((prev) => {
+      if (!prev) return u;
+      return { ...prev, ...u };
+    });
+  };
+
   const moveStatus = (mId: ModuleId, statusName: string, direction: 'up' | 'down') => {
     if (!project) return;
     const newConfigs = project.moduleConfigs.map(c => {
@@ -146,8 +170,6 @@ export function useProjectData(projectId: string) {
     }
     setProject({ ...project, tasks: updatedTasks });
   };
-
-  const updateProject = (u: Partial<FilmProject>) => project && setProject({ ...project, ...u });
   
   const addTask = (title: string, mId: ModuleId, s: string) => {
     if (!project) return;
