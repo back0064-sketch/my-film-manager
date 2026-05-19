@@ -6,26 +6,37 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useProjectData } from '../hooks/useProjectData';
 
+function cleanProjectData(raw: any) {
+  if (!raw) return null;
+  let target = raw.project_data ? raw.project_data : raw;
+  return {
+    id: target.id || raw.id,
+    name: target.name || raw.name || "未命名專案",
+    isFlatRate: target.isFlatRate || false,
+    tasks: target.tasks || [],
+    moduleConfigs: target.moduleConfigs && target.moduleConfigs.length > 0 ? target.moduleConfigs : [
+      { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
+      { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'] },
+      { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'] },
+      { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] }
+    ]
+  };
+}
+
 export default function Home() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [projectList, setProjectList] = useState<{ id: string; name: string; updated_at: string }[]>([]);
+  const [projectList, setProjectList] = useState<any[]>([]);
   const [lobbyLoading, setLobbyLoading] = useState<boolean>(true);
   const [newProjectName, setNewProjectName] = useState('');
 
-  // 1. 🔍 讀取大廳專案清單
   const loadLobbyProjects = async () => {
-    if (projectList.length === 0) {
-      setLobbyLoading(true);
-    }
+    setLobbyLoading(true);
     try {
       const { data } = await supabase
         .from('film_projects')
         .select('id, name, updated_at')
         .order('updated_at', { ascending: false });
-
-      if (data) {
-        setProjectList(data);
-      }
+      if (data) setProjectList(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -37,30 +48,12 @@ export default function Home() {
     if (!activeProjectId) loadLobbyProjects();
   }, [activeProjectId]);
 
-  // ➕ 建立全新空白專案
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
     const newId = crypto.randomUUID();
-    const defaultData = {
-      id: newId,
-      name: newProjectName.trim(),
-      isFlatRate: false,
-      tasks: [],
-      moduleConfigs: [
-        { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
-        { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'] },
-        { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'] },
-        { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] }
-      ]
-    };
+    const defaultData = cleanProjectData({ id: newId, name: newProjectName.trim() });
 
-    const dbPayload = {
-      id: newId,
-      name: newProjectName.trim(),
-      project_data: defaultData
-    };
-
-    localStorage.setItem(newId, JSON.stringify(dbPayload));
+    localStorage.setItem(newId, JSON.stringify(defaultData));
     await supabase.from('film_projects').upsert({
       id: newId,
       name: newProjectName.trim(),
@@ -72,64 +65,56 @@ export default function Home() {
     setActiveProjectId(newId);
   };
 
-  // 🗑️ 大廳刪除按鈕
   const handleDeleteProject = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`確定要永久刪除【${name}】這個專案看板嗎？此動作無法復原！`)) return;
-
+    if (!confirm(`確定要永久刪除【${name}】這個專案看板嗎？`)) return;
     try {
       localStorage.removeItem(id);
       await supabase.from('film_projects').delete().eq('id', id);
-      setProjectList(prev => prev.filter(p => p.id !== id));
+      setProjectList((prev: any[]) => prev.filter((p: any) => p.id !== id));
     } catch (err) {
-      alert('刪除失敗，請檢查網路');
+      alert('刪除失敗');
     }
   };
 
-  // 📂 智慧辨識匯入器
   const handleJsonImportToLobby = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = async (event: any) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-
         if (Array.isArray(parsed)) {
           for (const proj of parsed) {
-            const id = proj.id || crypto.randomUUID();
-            const name = proj.name || "未命名影視專案";
-            
-            const cleanProj = proj.project_data ? proj : { id, name, project_data: proj };
-
-            localStorage.setItem(id, JSON.stringify(cleanProj));
-            await supabase.from('film_projects').upsert({
-              id: id,
-              name: name,
-              project_data: cleanProj.project_data,
-              updated_at: new Date().toISOString()
-            });
+            const cleaned = cleanProjectData(proj);
+            if (cleaned) {
+              localStorage.setItem(cleaned.id, JSON.stringify(cleaned));
+              await supabase.from('film_projects').upsert({
+                id: cleaned.id,
+                name: cleaned.name,
+                project_data: cleaned,
+                updated_at: new Date().toISOString()
+              });
+            }
           }
-          alert(`☁️ 大成功！已智能辨識並解鎖導入共 ${parsed.length} 個完整的專案看板！`);
+          alert(`已成功匯入共 ${parsed.length} 個專案看板！`);
           loadLobbyProjects();
         } else {
-          const importedId = parsed.id || crypto.randomUUID();
-          const importedName = parsed.name || "未命名匯入專案";
-          
-          const cleanProj = parsed.project_data ? parsed : { id: importedId, name: importedName, project_data: parsed };
-
-          localStorage.setItem(importedId, JSON.stringify(cleanProj));
-          await supabase.from('film_projects').upsert({
-            id: importedId,
-            name: importedName,
-            project_data: cleanProj.project_data,
-            updated_at: new Date().toISOString()
-          });
-          alert(`📂 【${importedName}】已安全匯入系統！`);
-          setActiveProjectId(importedId);
+          const cleaned = cleanProjectData(parsed);
+          if (cleaned) {
+            localStorage.setItem(cleaned.id, JSON.stringify(cleaned));
+            await supabase.from('film_projects').upsert({
+              id: cleaned.id,
+              name: cleaned.name,
+              project_data: cleaned,
+              updated_at: new Date().toISOString()
+            });
+            alert(`📂 【${cleaned.name}】已成功匯入！`);
+            setActiveProjectId(cleaned.id);
+          }
         }
       } catch (err) {
-        alert('❌ 檔案解析失敗，請確保是正確的 JSON 備份檔！');
+        alert('檔案解析失敗');
       }
     };
     reader.readAsText(file);
@@ -144,7 +129,7 @@ export default function Home() {
               <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
                 🎬 影視製片控制台
               </h1>
-              <p className="text-slate-400 text-sm mt-2">中央大廳 • 智慧資料拆包裝流暢體</p>
+              <p className="text-slate-400 text-sm mt-2">中央大廳 • 智慧快取雲端控制中心</p>
             </div>
             <label className="cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg transition">
               📂 匯入舊專案 JSON
@@ -157,7 +142,7 @@ export default function Home() {
               type="text"
               placeholder="✨ 請輸入全新影視專案名稱..."
               value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
+              onChange={(e: any) => setNewProjectName(e.target.value)}
               className="w-full flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition"
             />
             <button
@@ -170,7 +155,7 @@ export default function Home() {
 
           <h2 className="text-lg font-bold text-slate-300 mb-4">🗂️ 當前專案看板清單 ({projectList.length})</h2>
 
-          {lobbyLoading && projectList.length === 0 ? (
+          {lobbyLoading ? (
             <div className="text-center py-12 text-slate-500 flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
               <p className="text-sm">連線資料庫中...</p>
@@ -181,7 +166,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {projectList.map((p) => (
+              {projectList.map((p: any) => (
                 <div
                   key={p.id}
                   onClick={() => setActiveProjectId(p.id)}
@@ -194,9 +179,8 @@ export default function Home() {
                     <p className="text-xs text-slate-500 mt-1">⚡ 雲端完全同步保護中</p>
                   </div>
                   <button
-                    onClick={(e) => handleDeleteProject(p.id, p.name, e)}
+                    onClick={(e: any) => handleDeleteProject(p.id, p.name, e)}
                     className="p-2 text-slate-600 hover:text-rose-400 rounded-lg hover:bg-slate-950 opacity-0 group-hover:opacity-100 transition"
-                    title="刪除專案"
                   >
                     🗑️
                   </button>
@@ -222,17 +206,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [activeModule, setActiveModule] = useState<string>('Scripting');
 
-  const rawProject: any = project;
-  const currentProject = rawProject && rawProject.project_data ? rawProject.project_data : (rawProject || { name: "載入中專案...", tasks: [], moduleConfigs: [] });
-
-  if (loading && !project) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-950 text-white gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
-        <p className="text-slate-400 text-sm">⚡ 建立安全連線中...</p>
-      </div>
-    );
-  }
+  const currentProject = project || { name: "載入中專案...", tasks: [], moduleConfigs: [] };
 
   const configs = currentProject.moduleConfigs && currentProject.moduleConfigs.length > 0
     ? currentProject.moduleConfigs
@@ -258,7 +232,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
               <h1 className="text-2xl font-black text-slate-100">
                 {currentProject.name || "進行中專案"}
               </h1>
-              <p className="text-slate-500 text-xs mt-0.5">☁️ 數據拆包裝對齊中</p>
+              <p className="text-slate-500 text-xs mt-0.5">☁️ 雲端數據即時同步中</p>
             </div>
           </div>
         </header>
@@ -272,7 +246,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                 { id: 'OnSite', name: '🎥 拍攝現場' },
                 { id: 'PostProduction', name: '✂️ 後期剪輯' },
                 { id: 'Finance', name: '💰 財務帳目' }
-              ].map((m) => (
+              ].map((m: any) => (
                 <button
                   key={m.id}
                   onClick={() => setActiveModule(m.id)}
@@ -292,8 +266,8 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                 type="text"
                 placeholder="💡 輸入任務名稱，按下 Enter 快速新增..."
                 value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                onKeyDown={(e) => {
+                onChange={(e: any) => setNewTaskTitle(e.target.value)}
+                onKeyDown={(e: any) => {
                   if (e.key === 'Enter' && newTaskTitle.trim()) {
                     const config = (configs as any[]).find((c: any) => c.moduleId === activeModule);
                     const firstStatus = config?.customStatuses?.[0] || '未分類';
@@ -306,7 +280,6 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* 🔥💡 終極修正處：明確對 status 貼上 any 標籤，徹底擊碎編譯阻擋！ */}
               {((configs as any[]).find((c: any) => c.moduleId === activeModule)?.customStatuses || []).map((status: any) => {
                 const moduleTasks = (currentProject.tasks || []).filter((t: any) => t.moduleId === activeModule && t.status === status);
                 return (
@@ -323,7 +296,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                             <input
                               type="text"
                               value={task.title}
-                              onChange={(e) => updateTask(task.id, { title: e.target.value })}
+                              onChange={(e: any) => updateTask(task.id, { title: e.target.value })}
                               className="bg-transparent text-sm text-slate-200 font-medium focus:outline-none focus:bg-slate-950 px-1 py-0.5 rounded w-full"
                             />
                             <button
@@ -339,7 +312,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                                 <input
                                   type="number"
                                   value={task.amount || 0}
-                                  onChange={(e) => updateTask(task.id, { amount: Number(e.target.value) })}
+                                  onChange={(e: any) => updateTask(task.id, { amount: Number(e.target.value) })}
                                   className="w-20 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-emerald-400 focus:outline-none"
                                 />
                               </div>
@@ -347,7 +320,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                                 <input
                                   type="checkbox"
                                   checked={task.isPaid || false}
-                                  onChange={(e) => updateTask(task.id, { isPaid: e.target.checked })}
+                                  onChange={(e: any) => updateTask(task.id, { isPaid: e.target.checked })}
                                   className="rounded border-slate-800 text-indigo-600 focus:ring-0 bg-slate-950 h-3.5 w-3.5"
                                 />
                                 <span className="text-xs text-slate-400 select-none">已支付</span>
