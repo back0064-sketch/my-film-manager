@@ -96,10 +96,13 @@ export function useProjectData(projectId: string) {
     return () => clearTimeout(delayDebounceFn);
   }, [project, projectId, loading]);
 
-  // ➕ 核心連動：新增任務自動連動財務帳目
+  // ➕ 新增任務（滿血復活自動防呆財務連動）
   const addTask = (title: string, moduleId: string, status: string) => {
     if (!project) return;
-    const newTaskId = crypto.randomUUID();
+    
+    // 💡 核心修正：採用 100% 穩定的萬能隨機 ID 生成法，徹底繞過全域 crypto 的型別衝突！
+    const newTaskId = Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+    
     const newTask = {
       id: newTaskId,
       moduleId,
@@ -115,11 +118,10 @@ export function useProjectData(projectId: string) {
     
     let nextTasks = [...project.tasks, newTask];
     
-    // 🔗 如果在製作模組新增，且不是包案，全自動防呆連動建立財務帳目
     if (!project.isFlatRate && triggerModules[moduleId]) {
       const financeConfig = project.moduleConfigs.find((c: any) => c.moduleId === 'Finance');
       const firstFinanceStatus = financeConfig?.customStatuses?.[0] || '📝 待請款';
-      const financeTaskId = crypto.randomUUID();
+      const financeTaskId = Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
       const suffix = triggerModules[moduleId];
       
       const linkedFinanceTask = {
@@ -144,13 +146,12 @@ export function useProjectData(projectId: string) {
     localStorage.setItem(projectId, JSON.stringify(updated));
   };
 
-  // 🗑️ 核心連動：刪除任務，自動連動刪除對應財務項目
+  // 🗑️ 刪除任務
   const deleteTask = (id: string) => {
     if (!project) return;
     const targetTask = project.tasks.find((t: any) => t.id === id);
     let nextTasks = project.tasks.filter((t: any) => t.id !== id);
     
-    // 如果有連動的任務，一起斬草除根
     if (targetTask?.linkedTaskId) {
       nextTasks = nextTasks.filter((t: any) => t.id !== targetTask.linkedTaskId);
     }
@@ -160,14 +161,13 @@ export function useProjectData(projectId: string) {
     localStorage.setItem(projectId, JSON.stringify(updated));
   };
 
-  // ⚡ 核心連動：修改內容（標題連動對齊 + 勾選已支付自動跳轉狀態）
+  // ⚡ 修改任務（金額統計與已支付全自動跳轉）
   const updateTask = (id: string, updates: any) => {
     if (!project) return;
     let updatedTasks = project.tasks.map((t: any) => t.id === id ? { ...t, ...updates, updatedAt: new Date() } : t);
     const currentTask = updatedTasks.find((t: any) => t.id === id);
     
     if (currentTask) {
-      // 1. 標題連動
       if (updates.title && currentTask.linkedTaskId) {
         updatedTasks = updatedTasks.map((t: any) => {
           if (t.id === currentTask.linkedTaskId) {
@@ -183,7 +183,6 @@ export function useProjectData(projectId: string) {
         });
       }
 
-      // 2. 勾選已支付 (isPaid) 全自動防呆跳轉狀態
       if (currentTask.moduleId === 'Finance' && updates.isPaid !== undefined) {
         const financeConfig = project.moduleConfigs.find((c: any) => c.moduleId === 'Finance');
         const statuses = financeConfig?.customStatuses || ['📝 待請款', '⏳ 審核中', '💰 已入帳'];
@@ -192,13 +191,13 @@ export function useProjectData(projectId: string) {
           updatedTasks = updatedTasks.map((t: any) => t.id === id ? { 
             ...t, 
             previousStatus: t.status, 
-            status: statuses[statuses.length - 1], // 強制跳轉到最後一格「已入帳」
+            status: statuses[statuses.length - 1], 
             paidAt: new Date().toISOString()
           } : t);
         } else if (updates.isPaid === false) {
           updatedTasks = updatedTasks.map((t: any) => t.id === id ? { 
             ...t, 
-            status: t.previousStatus || statuses[0], // 退回之前的狀態
+            status: t.previousStatus || statuses[0], 
             previousStatus: undefined,
             paidAt: undefined 
           } : t);
