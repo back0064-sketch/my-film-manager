@@ -12,9 +12,12 @@ export default function Home() {
   const [lobbyLoading, setLobbyLoading] = useState<boolean>(true);
   const [newProjectName, setNewProjectName] = useState('');
 
-  // 1. 🔍 讀取大廳專案清單
+  // 1. 🔍 讀取大廳專案清單（背景靜默重整）
   const loadLobbyProjects = async () => {
-    setLobbyLoading(true);
+    // 🔥 核心優化：如果原本就已經有列表了，就在背景靜默更新，不要再跳出大轉圈圈擋住使用者！
+    if (projectList.length === 0) {
+      setLobbyLoading(true);
+    }
     try {
       const { data } = await supabase
         .from('film_projects')
@@ -35,7 +38,6 @@ export default function Home() {
     if (!activeProjectId) loadLobbyProjects();
   }, [activeProjectId]);
 
-  // ➕ 建立全新空白專案
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
     const newId = crypto.randomUUID();
@@ -64,9 +66,8 @@ export default function Home() {
     setActiveProjectId(newId);
   };
 
-  // 🗑️ 大廳金手指：一鍵刪除垃圾重複專案
   const handleDeleteProject = async (id: string, name: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // 防止點擊垃圾桶時誤觸進入專案
+    e.stopPropagation();
     if (!confirm(`確定要永久刪除【${name}】這個專案看板嗎？此動作無法復原！`)) return;
 
     try {
@@ -78,7 +79,6 @@ export default function Home() {
     }
   };
 
-  // 📂 智慧辨識匯入器（完美解鎖大廳陣列備份）
   const handleJsonImportToLobby = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -88,7 +88,6 @@ export default function Home() {
         const parsed = JSON.parse(event.target?.result as string);
 
         if (Array.isArray(parsed)) {
-          // 🚀 核心優化：如果發現是整包舊大廳的多專案陣列，全自動拆開同步！
           for (const proj of parsed) {
             const id = proj.id || crypto.randomUUID();
             const name = proj.name || "未命名影視專案";
@@ -103,7 +102,6 @@ export default function Home() {
           alert(`☁️ 大成功！已智能辨識並解鎖導入共 ${parsed.length} 個完整的專案看板！`);
           loadLobbyProjects();
         } else {
-          // 單一專案匯入
           const importedId = parsed.id || crypto.randomUUID();
           const importedName = parsed.name || "未命名匯入專案";
           localStorage.setItem(importedId, JSON.stringify(parsed));
@@ -132,7 +130,7 @@ export default function Home() {
               <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
                 🎬 影視製片控制台
               </h1>
-              <p className="text-slate-400 text-sm mt-2">中央大廳 • Supabase 雲端多專案資料庫已就緒</p>
+              <p className="text-slate-400 text-sm mt-2">中央大廳 • 毫秒級極速流暢快取已啟動</p>
             </div>
             <label className="cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg transition">
               📂 匯入舊專案 JSON
@@ -143,7 +141,7 @@ export default function Home() {
           <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl mb-8 flex flex-col sm:flex-row gap-4 items-center">
             <input
               type="text"
-              placeholder="✨ 請輸入全新影視專案名稱（例如：Man's Game 第二季）..."
+              placeholder="✨ 請輸入全新影視專案名稱..."
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
               className="w-full flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition"
@@ -158,7 +156,7 @@ export default function Home() {
 
           <h2 className="text-lg font-bold text-slate-300 mb-4">🗂️ 當前專案看板清單 ({projectList.length})</h2>
 
-          {lobbyLoading ? (
+          {lobbyLoading && projectList.length === 0 ? (
             <div className="text-center py-12 text-slate-500 flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
               <p className="text-sm">連線資料庫中...</p>
@@ -210,9 +208,18 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [activeModule, setActiveModule] = useState<string>('Scripting');
 
+  // 🔥 優化：如果快取已經有資料，在 loading 期間也允許直接渲染，達到 0 延遲秒開！
   const currentProject = project || { name: "載入中專案...", tasks: [], moduleConfigs: [] };
 
-  // 🛡️ 絕對安全防禦：如果資料夾結構受損或剛匯入，給予硬質保底狀態欄，保證右側看板絕不消失！
+  if (loading && !project) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-950 text-white gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
+        <p className="text-slate-400 text-sm">⚡ 首次建立雲端安全連線中...</p>
+      </div>
+    );
+  }
+
   const configs = currentProject.moduleConfigs && currentProject.moduleConfigs.length > 0
     ? currentProject.moduleConfigs
     : [
@@ -237,7 +244,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
               <h1 className="text-2xl font-black text-slate-100">
                 {(currentProject as any).name || "進行中專案"}
               </h1>
-              <p className="text-slate-500 text-xs mt-0.5">☁️ 雲端核心數據鏈接中</p>
+              <p className="text-slate-500 text-xs mt-0.5">☁️ 雲端背景即時對齊中</p>
             </div>
           </div>
         </header>

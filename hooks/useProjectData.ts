@@ -19,23 +19,30 @@ export function useProjectData(projectId: string) {
   const [project, setProject] = useState<FilmProject | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // 1. 🔍 讀取資料：本地快取優先
+  // 1. 🔍 讀取資料：秒開快取優先流！
   useEffect(() => {
     if (!projectId) return;
 
     async function fetchProject() {
-      setLoading(true);
-      
       const localData = localStorage.getItem(projectId);
+      
       if (localData) {
+        // 🔥 核心優化：本地有資料就直接「秒開」畫面，絕對不讓使用者等網路轉圈圈！
         try {
           const parsed = JSON.parse(localData);
-          if (parsed && !Array.isArray(parsed)) setProject(parsed);
+          if (parsed && !Array.isArray(parsed)) {
+            setProject(parsed);
+            setLoading(false); 
+          }
         } catch(e) { console.error(e); }
+      } else {
+        // 只有在本地完全沒資料時，才需要顯示全螢幕載入中
+        setLoading(true);
       }
 
       try {
-        const { data, error } = await supabase
+        // ☁️ 讓網路連線在背景偷偷跑，完全不擋住使用者的操作
+        const { data } = await supabase
           .from('film_projects')
           .select('project_data')
           .eq('id', projectId)
@@ -60,9 +67,9 @@ export function useProjectData(projectId: string) {
           }
         }
       } catch (err) {
-        console.error('❌ 雲端讀取失敗:', err);
+        console.error('❌ 雲端背景讀取失敗:', err);
       } finally {
-        setLoading(false);
+        setLoading(false); // 確保最後一定關閉載入狀態
       }
     }
 
@@ -83,7 +90,7 @@ export function useProjectData(projectId: string) {
             project_data: project as any,
             updated_at: new Date().toISOString()
           });
-        console.log('☁️ [Supabase] 雲端即時備份成功');
+          console.log('☁️ [Supabase] 雲端背景同步成功');
       } catch (err) {
         console.error('❌ 雲端備份失敗:', err);
       }
@@ -92,7 +99,6 @@ export function useProjectData(projectId: string) {
     return () => clearTimeout(delayDebounceFn);
   }, [project, projectId, loading]);
 
-  // 🛠️ 強制即時鎖定 mutator 函數
   const updateProject = (u: any) => {
     setProject((prev) => {
       const next = prev ? { ...prev, ...u } : u;
