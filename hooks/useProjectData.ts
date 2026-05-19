@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FilmProject, Task } from '../types/project';
 import { AVAILABLE_MODULES, ModuleId } from '../constants/modules';
-import { supabase } from '@/lib/supabase'; // 🔌 引入雲端大腦連線
+import { supabase } from '../lib/supabase'; // 🔌 引入雲端大腦連線
 
 export function useProjectData(projectId: string) {
   const [project, setProject] = useState<FilmProject | null>(null);
