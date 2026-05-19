@@ -295,8 +295,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newTaskTitle.trim()) {
-                    // 🔥💡 修正處：明確對 c 貼上 any 標籤破除嚴格檢查！
-                    const config = configs.find((c: any) => c.moduleId === activeModule);
+                    const config = (configs as any[]).find((c: any) => c.moduleId === activeModule);
                     const firstStatus = config?.customStatuses?.[0] || '未分類';
                     addTask(newTaskTitle.trim(), activeModule as any, firstStatus);
                     setNewTaskTitle('');
@@ -307,7 +306,8 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {(configs.find((c: any) => c.moduleId === activeModule)?.customStatuses || []).map((status) => {
+              {/* 🔥💡 終極修正處：明確對 status 貼上 any 標籤，徹底擊碎編譯阻擋！ */}
+              {((configs as any[]).find((c: any) => c.moduleId === activeModule)?.customStatuses || []).map((status: any) => {
                 const moduleTasks = (currentProject.tasks || []).filter((t: any) => t.moduleId === activeModule && t.status === status);
                 return (
                   <div key={status} className="bg-slate-900/20 rounded-xl border border-slate-800 p-4 flex flex-col min-h-[350px]">
