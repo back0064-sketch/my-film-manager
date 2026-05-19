@@ -3,9 +3,9 @@ import { FilmProject, Task } from '../types/project';
 import { ModuleId } from '../constants/modules';
 import { supabase } from '@/lib/supabase';
 
-// 💡 修正：將這裡改成 any，徹底繞過 TypeScript 對 'name' 屬性的嚴格檢查，確保順利編譯！
-const DEFAULT_PROJECT: any = {
-  name: "Man's Game 全新雲端專案",
+// 💡 預設初始範本（當本地與雲端都完全沒有任何資料時才啟動）
+const DEFAULT_PROJECT_TEMPLATE: any = {
+  name: "全新影視專案",
   isFlatRate: false,
   tasks: [],
   moduleConfigs: [
@@ -20,13 +20,21 @@ export function useProjectData(projectId: string) {
   const [project, setProject] = useState<FilmProject | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // 1. 🔍 從雲端 Supabase 讀取資料
+  // 1. 🔍 讀取資料：本地快取優先，拒絕空白！
   useEffect(() => {
     if (!projectId) return;
 
-    async function fetchProjectFromCloud() {
+    async function fetchProject() {
       setLoading(true);
+      
+      // 🛟 雙保險 A：第一時間先撈瀏覽器本地快取，保證網頁秒開、不空白、名字不被洗掉
+      const localData = localStorage.getItem(projectId);
+      if (localData) {
+        setProject(JSON.parse(localData));
+      }
+
       try {
+        // ☁️ 雙保險 B：去雲端撈最新資料
         const { data, error } = await supabase
           .from('film_projects')
           .select('project_data')
@@ -34,10 +42,13 @@ export function useProjectData(projectId: string) {
           .maybeSingle();
 
         if (error) {
-          console.log('💡 雲端資料庫目前為空，準備載入初始備用線路...');
-        }
-
-        if (data && data.project_data) {
+          console.error('⚠️ [Supabase 雲端讀取管制]：', error.message);
+          // 如果連本地快取都沒有，才使用乾淨的預設範本
+          if (!localData) {
+            setProject({ ...DEFAULT_PROJECT_TEMPLATE, id: projectId } as any);
+          }
+        } else if (data && data.project_data) {
+          // ☁️ 雲端有最新資料，覆蓋本地並更新
           const parsedData = data.project_data as any;
           parsedData.collapsedModules = parsedData.collapsedModules || [];
           parsedData.moduleConfigs = (parsedData.moduleConfigs || []).map((c: any) => ({
@@ -45,35 +56,37 @@ export function useProjectData(projectId: string) {
             collapsedStatuses: c.collapsedStatuses || []
           }));
           if (parsedData.isFlatRate === undefined) parsedData.isFlatRate = false;
+          
           setProject(parsedData);
+          localStorage.setItem(projectId, JSON.stringify(parsedData));
         } else {
-          const savedData = localStorage.getItem(projectId);
-          if (savedData) {
-            setProject(JSON.parse(savedData));
-          } else {
-            setProject({ ...DEFAULT_PROJECT, id: projectId } as any);
+          // 雲端完全沒這筆資料（代表是新建立的），若本地沒快取才初始化
+          if (!localData) {
+            setProject({ ...DEFAULT_PROJECT_TEMPLATE, id: projectId } as any);
           }
         }
       } catch (err) {
-        console.error('❌ 讀取例外失敗:', err);
-        setProject(DEFAULT_PROJECT);
+        console.error('❌ 讀取例外錯誤:', err);
+        if (!localData) setProject(DEFAULT_PROJECT_TEMPLATE);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchProjectFromCloud();
+    fetchProject();
   }, [projectId]);
 
-  // 2. ⚡ 當資料變動，自動同步推上雲端
+  // 2. ⚡ 自動秒同步：先鎖死本地防丟，再背景推送雲端
   useEffect(() => {
     if (!project || !projectId || loading) return;
 
     const delayDebounceFn = setTimeout(async () => {
       try {
+        // 💾 絕對優先存入本地，保證你剛剛修改的資料一定被存下來！
         localStorage.setItem(projectId, JSON.stringify(project));
 
-        await supabase
+        // ☁️ 背景嘗試推上雲端大腦
+        const { error } = await supabase
           .from('film_projects')
           .upsert({
             id: projectId,
@@ -81,19 +94,28 @@ export function useProjectData(projectId: string) {
             project_data: project as any,
             updated_at: new Date().toISOString()
           });
-        console.log('☁️ [Supabase] 雲端即時同步成功！');
+
+        if (error) {
+          console.error('⚠️ [Supabase 雲端寫入管制]：資料已安全存在本地，但雲端同步失敗，請檢查資料庫 RLS 權限。原因：', error.message);
+        } else {
+          console.log('☁️ [Supabase] 雲端即時同步備份大成功！');
+        }
       } catch (err) {
-        console.error('❌ 雲端同步失敗:', err);
+        console.error('❌ 同步例外錯誤:', err);
       }
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
   }, [project, projectId, loading]);
 
+  // -------------------------------------------------------------
+  // 以下為核心防呆連動邏輯（完美保留）
+  // -------------------------------------------------------------
   const updateProject = (u: any) => {
     setProject((prev) => {
-      if (!prev) return u;
-      return { ...prev, ...u };
+      const next = prev ? { ...prev, ...u } : u;
+      localStorage.setItem(projectId, JSON.stringify(next)); // 強制同步本地
+      return next;
     });
   };
 

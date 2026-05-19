@@ -1,6 +1,5 @@
 'use client';
 
-// 🛡️ 強制鎖定動態渲染，確保 Vercel 打包絕對不亮紅燈
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
@@ -8,15 +7,14 @@ import { supabase } from '@/lib/supabase';
 import { useProjectData } from '../hooks/useProjectData';
 
 export default function Home() {
-  // 核心狀態：當前點選的專案 ID，若為 null 則顯示「專案大廳」
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [projectList, setProjectList] = useState<{ id: string; name: string; updated_at: string }[]>([]);
   const [lobbyLoading, setLobbyLoading] = useState<boolean>(true);
   const [newProjectName, setNewProjectName] = useState('');
 
-  // 1. 🔍 專案大廳：從雲端撈取所有活著的專案列表
+  // 1. 🔍 專案大廳：讀取列表
   useEffect(() => {
-    if (activeProjectId) return; // 如果人在專案內，就不重複撈大廳
+    if (activeProjectId) return;
 
     async function loadLobbyProjects() {
       setLobbyLoading(true);
@@ -26,23 +24,36 @@ export default function Home() {
           .select('id, name, updated_at')
           .order('updated_at', { ascending: false });
 
-        if (data) {
+        if (data && data.length > 0) {
           setProjectList(data);
+        } else {
+          // 🛟 雲端沒拿到列表時，去讀本地存過的所有專案當作備用顯示
+          const localKeys = Object.keys(localStorage).filter(k => k.length > 30); // 篩選出 UUID 的 key
+          const fallbackList = localKeys.map(k => {
+            try {
+              const p = JSON.parse(localStorage.getItem(k) || '');
+              return { id: k, name: p.name || '未命名專案', updated_at: new Date().toISOString() };
+            } catch {
+              return null;
+            }
+          }).filter(Boolean) as any;
+          setProjectList(fallbackList);
         }
       } catch (err) {
         console.error('❌ 撈取大廳失敗:', err);
-      } {
+      } finally {
         setLobbyLoading(false);
       }
     }
     loadLobbyProjects();
   }, [activeProjectId]);
 
-  // ➕ 大廳功能：建立全新空白專案
+  // ➕ 大廳功能：建立專案（本地優先雙保險）
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
     const newId = crypto.randomUUID();
     const defaultData = {
+      id: newId,
       name: newProjectName.trim(),
       isFlatRate: false,
       tasks: [],
@@ -54,21 +65,22 @@ export default function Home() {
       ]
     };
 
-    try {
-      await supabase.from('film_projects').upsert({
-        id: newId,
-        name: newProjectName.trim(),
-        project_data: defaultData,
-        updated_at: new Date().toISOString()
-      });
-      setNewProjectName('');
-      setActiveProjectId(newId); // 建立成功後直接秒傳送進專案！
-    } catch (err) {
-      alert('❌ 建立專案失敗，請檢查網路！');
-    }
+    // 💾 絕對優先存入本地，保證名字絕對是你取的那一個！
+    localStorage.setItem(newId, JSON.stringify(defaultData));
+
+    // ☁️ 背景嘗試送雲端
+    await supabase.from('film_projects').upsert({
+      id: newId,
+      name: newProjectName.trim(),
+      project_data: defaultData,
+      updated_at: new Date().toISOString()
+    });
+
+    setNewProjectName('');
+    setActiveProjectId(newId); // 秒進專案房間
   };
 
-  // 📂 大廳功能：匯入舊有的本地備份 JSON，直接在雲端創立新房間
+  // 📂 大廳功能：匯入 JSON（本地優先雙保險）
   const handleJsonImportToLobby = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -79,7 +91,10 @@ export default function Home() {
         const importedId = parsed.id || crypto.randomUUID();
         const importedName = parsed.name || "未命名匯入專案";
 
-        // 強制推上 Supabase 雲端
+        // 💾 絕對優先塞入本地快取，保證資料與卡片完全被釋放，出來絕不空白！
+        localStorage.setItem(importedId, JSON.stringify(parsed));
+
+        // ☁️ 背景再推雲端
         await supabase.from('film_projects').upsert({
           id: importedId,
           name: importedName,
@@ -87,8 +102,8 @@ export default function Home() {
           updated_at: new Date().toISOString()
         });
 
-        alert(`☁️ 【${importedName}】已成功同步至 Supabase 雲端！`);
-        setActiveProjectId(importedId); // 直接進去該專案
+        alert(`📂 【${importedName}】已安全匯入系統！`);
+        setActiveProjectId(importedId);
       } catch (err) {
         alert('❌ 檔案格式解析失敗，請確保是正確的專案 JSON 備份檔！');
       }
@@ -96,60 +111,49 @@ export default function Home() {
     reader.readAsText(file);
   };
 
-  // ==========================================
-  // 渲染邏輯 A：如果沒有選專案 ── 顯示【專案大廳】
-  // ==========================================
   if (!activeProjectId) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
         <div className="max-w-5xl mx-auto">
-          {/* 大廳大標題 */}
           <header className="mb-12 border-b border-slate-800 pb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
               <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
                 🎬 影視製片控制台
               </h1>
-              <p className="text-slate-400 text-sm mt-2">Supabase 雲端大腦中央控制中心 • 專案大廳</p>
+              <p className="text-slate-400 text-sm mt-2">中央控制大廳 • 本地與雲端雙軌同步中</p>
             </div>
-            {/* 匯入舊 JSON 按鈕 */}
             <label className="cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg transition">
-              📂 匯入本地舊專案 JSON
+              📂 匯入舊專案 JSON
               <input type="file" accept=".json" onChange={handleJsonImportToLobby} className="hidden" />
             </label>
           </header>
 
-          {/* 快速建立新專案 */}
           <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl mb-8 flex flex-col sm:flex-row gap-4 items-center">
             <input
               type="text"
-              placeholder="✨ 輸入全新影視專案名稱 (例如：Man's Game)..."
+              placeholder="✨ 輸入全新影視專案名稱..."
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
               className="w-full flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition"
             />
             <button
               onClick={handleCreateProject}
-              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-6 py-3 rounded-xl transition shadow-md shadow-indigo-600/10 whitespace-nowrap"
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-6 py-3 rounded-xl transition shadow-md whitespace-nowrap"
             >
               ➕ 建立新專案
             </button>
           </div>
 
-          {/* 雲端專案列表區 */}
-          <h2 className="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">
-            🗂️ 雲端同步專案清單 
-            <span className="bg-slate-800 text-slate-400 text-xs px-2 py-0.5 rounded-full">{projectList.length}</span>
-          </h2>
+          <h2 className="text-lg font-bold text-slate-300 mb-4">🗂️ 當前專案看板清單 ({projectList.length})</h2>
 
           {lobbyLoading ? (
             <div className="text-center py-12 text-slate-500 flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
-              <p className="text-sm">正在連線雲端基地撈取清單...</p>
+              <p className="text-sm">載入看板中...</p>
             </div>
           ) : projectList.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl">
-              <p className="text-slate-500 text-sm italic">雲端大腦空空如也，快在上方建立新專案或匯入舊 JSON 吧！</p>
+              <p className="text-slate-500 text-sm italic">尚無任何專案，請在上方建立或匯入專案。</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -157,19 +161,15 @@ export default function Home() {
                 <div
                   key={p.id}
                   onClick={() => setActiveProjectId(p.id)}
-                  className="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 p-6 rounded-2xl cursor-pointer transition flex justify-between items-center group shadow-sm hover:shadow-indigo-950/20"
+                  className="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 p-6 rounded-2xl cursor-pointer transition flex justify-between items-center group shadow-sm"
                 >
                   <div>
                     <h3 className="font-bold text-lg text-slate-200 group-hover:text-indigo-400 transition">
                       {p.name}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      最後同步：{new Date(p.updated_at).toLocaleString('zh-TW')}
-                    </p>
+                    <p className="text-xs text-slate-500 mt-1">系統已全面保護此專案看板</p>
                   </div>
-                  <span className="text-slate-600 group-hover:text-indigo-400 text-xl transition transform group-hover:translate-x-1">
-                    ➔
-                  </span>
+                  <span className="text-slate-600 group-hover:text-indigo-400 text-xl transition transform group-hover:translate-x-1">➔</span>
                 </div>
               ))}
             </div>
@@ -179,9 +179,6 @@ export default function Home() {
     );
   }
 
-  // ==========================================
-  // 渲染邏輯 B：如果選取了專案 ── 載入該專案看板
-  // ==========================================
   return (
     <InnerProjectBoard 
       projectId={activeProjectId} 
@@ -190,7 +187,6 @@ export default function Home() {
   );
 }
 
-// 🔌 獨立子組件：負責精準處理單一專案的雲端資料連動
 function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; onBackToLobby: () => void }) {
   const { 
     project, 
@@ -205,17 +201,8 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [activeModule, setActiveModule] = useState<string>('Scripting');
 
-  if (loading) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-950 text-white gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
-        <p className="text-slate-400 text-sm">⚡ 正在即時開啟雲端專案空間...</p>
-      </div>
-    );
-  }
-
   const currentProject = project || {
-    name: "載入中專案",
+    name: "載入中專案...",
     tasks: [],
     moduleConfigs: []
   };
@@ -223,8 +210,6 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        
-        {/* 頂部導覽列 */}
         <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-6">
           <div className="flex items-center gap-4">
             <button
@@ -237,14 +222,12 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
               <h1 className="text-2xl font-black text-slate-100">
                 {(currentProject as any).name || "未命名專案"}
               </h1>
-              <p className="text-slate-500 text-xs mt-0.5">☁️ Supabase 雲端完全同步中</p>
+              <p className="text-slate-500 text-xs mt-0.5">本地優先保護模式啟動中</p>
             </div>
           </div>
         </header>
 
-        {/* 主工作區面版 */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* 左側模組切換 */}
           <div className="lg:col-span-1 bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 h-fit">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 px-2">看板階段</h3>
             <div className="flex flex-col gap-1">
@@ -258,9 +241,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                   key={m.id}
                   onClick={() => setActiveModule(m.id)}
                   className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition ${
-                    activeModule === m.id 
-                      ? 'bg-indigo-600 text-white shadow-md' 
-                      : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                    activeModule === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
                   }`}
                 >
                   {m.name}
@@ -269,9 +250,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             </div>
           </div>
 
-          {/* 右側看板主體 */}
           <div className="lg:col-span-3 space-y-4">
-            {/* 快速新增任務輸入框 */}
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex gap-3">
               <input
                 type="text"
@@ -290,7 +269,6 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
               />
             </div>
 
-            {/* 看板狀態三欄位 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {((currentProject.moduleConfigs || []).find(c => c.moduleId === activeModule)?.customStatuses || []).map((status) => {
                 const moduleTasks = (currentProject.tasks || []).filter(t => t.moduleId === activeModule && t.status === status);
@@ -301,7 +279,6 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                       <span className="bg-slate-800 text-slate-400 text-xs px-2 py-0.5 rounded-full">{moduleTasks.length}</span>
                     </div>
 
-                    {/* 任務卡片列表 */}
                     <div className="space-y-2 flex-1 overflow-y-auto">
                       {moduleTasks.map((task) => (
                         <div key={task.id} className="bg-slate-900 border border-slate-800 p-3 rounded-lg hover:border-slate-700 transition group shadow-sm">
@@ -315,12 +292,9 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
                             <button
                               onClick={() => deleteTask(task.id)}
                               className="text-slate-600 hover:text-rose-400 text-xs opacity-0 group-hover:opacity-100 transition"
-                            >
-                              ✕
-                            </button>
+                            >✕</button>
                           </div>
 
-                          {/* 財務模組金額與打勾專區 */}
                           {activeModule === 'Finance' && (
                             <div className="mt-3 pt-3 border-t border-slate-800/50 flex items-center justify-between gap-2">
                               <div className="flex items-center gap-1">
@@ -355,7 +329,6 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );
