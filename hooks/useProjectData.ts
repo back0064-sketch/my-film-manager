@@ -61,7 +61,7 @@ export function useProjectData(projectId: string) {
           .from('film_projects')
           .upsert({
             id: projectId,
-            name: project.name || '未命名專案',
+            nname: (project as any).name || '未命名專案',
             project_data: project as any, // 💡 加上 as any 順利通過雲端打包優化
             updated_at: new Date().toISOString()
           });
