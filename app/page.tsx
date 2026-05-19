@@ -12,43 +12,30 @@ export default function Home() {
   const [lobbyLoading, setLobbyLoading] = useState<boolean>(true);
   const [newProjectName, setNewProjectName] = useState('');
 
-  // 1. 🔍 專案大廳：讀取列表
-  useEffect(() => {
-    if (activeProjectId) return;
+  // 1. 🔍 讀取大廳專案清單
+  const loadLobbyProjects = async () => {
+    setLobbyLoading(true);
+    try {
+      const { data } = await supabase
+        .from('film_projects')
+        .select('id, name, updated_at')
+        .order('updated_at', { ascending: false });
 
-    async function loadLobbyProjects() {
-      setLobbyLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('film_projects')
-          .select('id, name, updated_at')
-          .order('updated_at', { ascending: false });
-
-        if (data && data.length > 0) {
-          setProjectList(data);
-        } else {
-          // 🛟 雲端沒拿到列表時，去讀本地存過的所有專案當作備用顯示
-          const localKeys = Object.keys(localStorage).filter(k => k.length > 30); // 篩選出 UUID 的 key
-          const fallbackList = localKeys.map(k => {
-            try {
-              const p = JSON.parse(localStorage.getItem(k) || '');
-              return { id: k, name: p.name || '未命名專案', updated_at: new Date().toISOString() };
-            } catch {
-              return null;
-            }
-          }).filter(Boolean) as any;
-          setProjectList(fallbackList);
-        }
-      } catch (err) {
-        console.error('❌ 撈取大廳失敗:', err);
-      } finally {
-        setLobbyLoading(false);
+      if (data) {
+        setProjectList(data);
       }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLobbyLoading(false);
     }
-    loadLobbyProjects();
+  };
+
+  useEffect(() => {
+    if (!activeProjectId) loadLobbyProjects();
   }, [activeProjectId]);
 
-  // ➕ 大廳功能：建立專案（本地優先雙保險）
+  // ➕ 建立全新空白專案
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
     const newId = crypto.randomUUID();
@@ -65,10 +52,7 @@ export default function Home() {
       ]
     };
 
-    // 💾 絕對優先存入本地，保證名字絕對是你取的那一個！
     localStorage.setItem(newId, JSON.stringify(defaultData));
-
-    // ☁️ 背景嘗試送雲端
     await supabase.from('film_projects').upsert({
       id: newId,
       name: newProjectName.trim(),
@@ -77,10 +61,24 @@ export default function Home() {
     });
 
     setNewProjectName('');
-    setActiveProjectId(newId); // 秒進專案房間
+    setActiveProjectId(newId);
   };
 
-  // 📂 大廳功能：匯入 JSON（本地優先雙保險）
+  // 🗑️ 大廳金手指：一鍵刪除垃圾重複專案
+  const handleDeleteProject = async (id: string, name: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // 防止點擊垃圾桶時誤觸進入專案
+    if (!confirm(`確定要永久刪除【${name}】這個專案看板嗎？此動作無法復原！`)) return;
+
+    try {
+      localStorage.removeItem(id);
+      await supabase.from('film_projects').delete().eq('id', id);
+      setProjectList(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      alert('刪除失敗，請檢查網路');
+    }
+  };
+
+  // 📂 智慧辨識匯入器（完美解鎖大廳陣列備份）
   const handleJsonImportToLobby = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -88,24 +86,38 @@ export default function Home() {
     reader.onload = async (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-        const importedId = parsed.id || crypto.randomUUID();
-        const importedName = parsed.name || "未命名匯入專案";
 
-        // 💾 絕對優先塞入本地快取，保證資料與卡片完全被釋放，出來絕不空白！
-        localStorage.setItem(importedId, JSON.stringify(parsed));
-
-        // ☁️ 背景再推雲端
-        await supabase.from('film_projects').upsert({
-          id: importedId,
-          name: importedName,
-          project_data: parsed,
-          updated_at: new Date().toISOString()
-        });
-
-        alert(`📂 【${importedName}】已安全匯入系統！`);
-        setActiveProjectId(importedId);
+        if (Array.isArray(parsed)) {
+          // 🚀 核心優化：如果發現是整包舊大廳的多專案陣列，全自動拆開同步！
+          for (const proj of parsed) {
+            const id = proj.id || crypto.randomUUID();
+            const name = proj.name || "未命名影視專案";
+            localStorage.setItem(id, JSON.stringify(proj));
+            await supabase.from('film_projects').upsert({
+              id: id,
+              name: name,
+              project_data: proj,
+              updated_at: new Date().toISOString()
+            });
+          }
+          alert(`☁️ 大成功！已智能辨識並解鎖導入共 ${parsed.length} 個完整的專案看板！`);
+          loadLobbyProjects();
+        } else {
+          // 單一專案匯入
+          const importedId = parsed.id || crypto.randomUUID();
+          const importedName = parsed.name || "未命名匯入專案";
+          localStorage.setItem(importedId, JSON.stringify(parsed));
+          await supabase.from('film_projects').upsert({
+            id: importedId,
+            name: importedName,
+            project_data: parsed,
+            updated_at: new Date().toISOString()
+          });
+          alert(`📂 【${importedName}】已安全匯入系統！`);
+          setActiveProjectId(importedId);
+        }
       } catch (err) {
-        alert('❌ 檔案格式解析失敗，請確保是正確的專案 JSON 備份檔！');
+        alert('❌ 檔案解析失敗，請確保是正確的 JSON 備份檔！');
       }
     };
     reader.readAsText(file);
@@ -120,7 +132,7 @@ export default function Home() {
               <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
                 🎬 影視製片控制台
               </h1>
-              <p className="text-slate-400 text-sm mt-2">中央控制大廳 • 本地與雲端雙軌同步中</p>
+              <p className="text-slate-400 text-sm mt-2">中央大廳 • Supabase 雲端多專案資料庫已就緒</p>
             </div>
             <label className="cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg transition">
               📂 匯入舊專案 JSON
@@ -131,7 +143,7 @@ export default function Home() {
           <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl mb-8 flex flex-col sm:flex-row gap-4 items-center">
             <input
               type="text"
-              placeholder="✨ 輸入全新影視專案名稱..."
+              placeholder="✨ 請輸入全新影視專案名稱（例如：Man's Game 第二季）..."
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
               className="w-full flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition"
@@ -149,11 +161,11 @@ export default function Home() {
           {lobbyLoading ? (
             <div className="text-center py-12 text-slate-500 flex flex-col items-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
-              <p className="text-sm">載入看板中...</p>
+              <p className="text-sm">連線資料庫中...</p>
             </div>
           ) : projectList.length === 0 ? (
             <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl">
-              <p className="text-slate-500 text-sm italic">尚無任何專案，請在上方建立或匯入專案。</p>
+              <p className="text-slate-500 text-sm italic">尚無任何專案，請在上方建立或匯入舊 JSON。</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -167,9 +179,15 @@ export default function Home() {
                     <h3 className="font-bold text-lg text-slate-200 group-hover:text-indigo-400 transition">
                       {p.name}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">系統已全面保護此專案看板</p>
+                    <p className="text-xs text-slate-500 mt-1">⚡ 雲端完全同步保護中</p>
                   </div>
-                  <span className="text-slate-600 group-hover:text-indigo-400 text-xl transition transform group-hover:translate-x-1">➔</span>
+                  <button
+                    onClick={(e) => handleDeleteProject(p.id, p.name, e)}
+                    className="p-2 text-slate-600 hover:text-rose-400 rounded-lg hover:bg-slate-950 opacity-0 group-hover:opacity-100 transition"
+                    title="刪除專案"
+                  >
+                    🗑️
+                  </button>
                 </div>
               ))}
             </div>
@@ -188,24 +206,21 @@ export default function Home() {
 }
 
 function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; onBackToLobby: () => void }) {
-  const { 
-    project, 
-    loading, 
-    addTask, 
-    deleteTask, 
-    updateTask, 
-    addStatus, 
-    deleteStatus 
-  } = useProjectData(projectId);
-
+  const { project, loading, addTask, deleteTask, updateTask } = useProjectData(projectId);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [activeModule, setActiveModule] = useState<string>('Scripting');
 
-  const currentProject = project || {
-    name: "載入中專案...",
-    tasks: [],
-    moduleConfigs: []
-  };
+  const currentProject = project || { name: "載入中專案...", tasks: [], moduleConfigs: [] };
+
+  // 🛡️ 絕對安全防禦：如果資料夾結構受損或剛匯入，給予硬質保底狀態欄，保證右側看板絕不消失！
+  const configs = currentProject.moduleConfigs && currentProject.moduleConfigs.length > 0
+    ? currentProject.moduleConfigs
+    : [
+        { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
+        { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'] },
+        { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'] },
+        { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] }
+      ];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
@@ -220,9 +235,9 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             </button>
             <div>
               <h1 className="text-2xl font-black text-slate-100">
-                {(currentProject as any).name || "未命名專案"}
+                {(currentProject as any).name || "進行中專案"}
               </h1>
-              <p className="text-slate-500 text-xs mt-0.5">本地優先保護模式啟動中</p>
+              <p className="text-slate-500 text-xs mt-0.5">☁️ 雲端核心數據鏈接中</p>
             </div>
           </div>
         </header>
@@ -254,12 +269,12 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex gap-3">
               <input
                 type="text"
-                placeholder="💡 新增一項任務並按下 Enter..."
+                placeholder="💡 輸入任務名稱，按下 Enter 快速新增..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newTaskTitle.trim()) {
-                    const config = (currentProject.moduleConfigs || []).find(c => c.moduleId === activeModule);
+                    const config = configs.find(c => c.moduleId === activeModule);
                     const firstStatus = config?.customStatuses?.[0] || '未分類';
                     addTask(newTaskTitle.trim(), activeModule as any, firstStatus);
                     setNewTaskTitle('');
@@ -270,7 +285,7 @@ function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; on
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {((currentProject.moduleConfigs || []).find(c => c.moduleId === activeModule)?.customStatuses || []).map((status) => {
+              {(configs.find(c => c.moduleId === activeModule)?.customStatuses || []).map((status) => {
                 const moduleTasks = (currentProject.tasks || []).filter(t => t.moduleId === activeModule && t.status === status);
                 return (
                   <div key={status} className="bg-slate-900/20 rounded-xl border border-slate-800 p-4 flex flex-col min-h-[350px]">
