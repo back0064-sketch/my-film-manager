@@ -1,19 +1,27 @@
-import { useEffect, useState } from 'react';
-import { projectApi } from '@/lib/api/project-api';
+import { useCallback, useEffect, useState } from 'react';
+import { projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
-import { ModuleId, ProjectData, Task } from '@/types/project';
+import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
+import { ExpenseCategory, ModuleId, ProjectData, Task } from '@/types/project';
 
-const financeLabels: Partial<Record<ModuleId, string>> = {
-  Scripting: '腳本費',
-  OnSite: '拍攝費',
-  PostProduction: '剪輯費',
-};
-
-const createTaskId = () => crypto.randomUUID();
+export type SyncStatus = 'syncing' | 'synced' | 'error';
 
 export function useProjectData(projectId: string) {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('syncing');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  const syncProject = useCallback(async (projectToSync: ProjectData) => {
+    setSyncStatus('syncing');
+    try {
+      await projectApi.save(projectToSync);
+      setLastSyncedAt(new Date().toISOString());
+      setSyncStatus('synced');
+    } catch {
+      setSyncStatus('error');
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,12 +39,22 @@ export function useProjectData(projectId: string) {
       }
 
       let cloudProject: ProjectData | null = null;
-      try { cloudProject = await projectApi.get(projectId); } catch { /* Offline mode keeps local data. */ }
+      let cloudLoaded = false;
+      try {
+        cloudProject = await projectApi.get(projectId);
+        cloudLoaded = true;
+      } catch { /* Offline mode keeps local data. */ }
 
       if (!cancelled) {
         const nextProject = cloudProject ?? localProject ?? createProjectData(projectId);
         setProject(nextProject);
         localStorage.setItem(projectId, JSON.stringify(nextProject));
+        if (cloudLoaded) {
+          setLastSyncedAt(new Date().toISOString());
+          setSyncStatus('synced');
+        } else {
+          setSyncStatus('error');
+        }
         setLoading(false);
       }
     }
@@ -49,64 +67,47 @@ export function useProjectData(projectId: string) {
     if (!project || loading) return;
     const timer = window.setTimeout(async () => {
       localStorage.setItem(projectId, JSON.stringify(project));
-      try {
-        await projectApi.save(project);
-      } catch { /* Offline mode keeps local data. */ }
+      await syncProject(project);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [loading, project, projectId]);
+  }, [loading, project, projectId, syncProject]);
 
   const updateProject = (updater: (current: ProjectData) => ProjectData) => {
+    setSyncStatus('syncing');
     setProject((current) => (current ? updater(current) : current));
   };
 
-  const addTask = (title: string, moduleId: ModuleId, status: string) => {
-    updateProject((current) => {
-      const taskId = createTaskId();
-      const task: Task = { id: taskId, moduleId, title, status, amount: 0, isPaid: false, updatedAt: new Date().toISOString() };
-      const label = financeLabels[moduleId];
-      if (!label || current.isFlatRate) return { ...current, tasks: [...current.tasks, task] };
+  const retrySync = async () => {
+    if (!project) return;
+    localStorage.setItem(projectId, JSON.stringify(project));
+    await syncProject(project);
+  };
 
-      const financeStatus = current.moduleConfigs.find((config) => config.moduleId === 'Finance')?.customStatuses[0] ?? '📝 待請款';
-      const financeTask: Task = {
-        id: createTaskId(), moduleId: 'Finance', title: `${title} (${label})`, status: financeStatus,
-        amount: 0, isPaid: false, linkedTaskId: taskId, updatedAt: new Date().toISOString(),
-      };
-      task.linkedTaskId = financeTask.id;
-      return { ...current, tasks: [...current.tasks, task, financeTask] };
-    });
+  const renameProject = (name: string) => {
+    const nextName = name.trim();
+    if (!nextName) return false;
+    updateProject((current) => ({ ...current, name: nextName }));
+    return true;
+  };
+
+  const updateBudget = (category: ExpenseCategory, amount: number) => {
+    updateProject((current) => ({
+      ...current,
+      budgetByCategory: { ...current.budgetByCategory, [category]: Math.max(0, amount) },
+    }));
+  };
+
+  const addTask = (title: string, moduleId: ModuleId, status: string) => {
+    updateProject((current) => addTaskToProject(current, title, moduleId, status));
   };
 
   const deleteTask = (taskId: string) => {
-    updateProject((current) => {
-      const linkedId = current.tasks.find((task) => task.id === taskId)?.linkedTaskId;
-      return { ...current, tasks: current.tasks.filter((task) => task.id !== taskId && task.id !== linkedId) };
-    });
+    updateProject((current) => deleteTaskFromProject(current, taskId));
   };
 
   const updateTask = (taskId: string, updates: Partial<Task>) => {
-    updateProject((current) => {
-      const task = current.tasks.find((item) => item.id === taskId);
-      if (!task) return current;
-      const now = new Date().toISOString();
-      let tasks = current.tasks.map((item) => item.id === taskId ? { ...item, ...updates, updatedAt: now } : item);
-      const changed = tasks.find((item) => item.id === taskId)!;
-
-      if (updates.title && changed.moduleId !== 'Finance' && changed.linkedTaskId) {
-        tasks = tasks.map((item) => item.id === changed.linkedTaskId
-          ? { ...item, title: `${updates.title} (${financeLabels[changed.moduleId] ?? '費用'})`, updatedAt: now }
-          : item);
-      }
-
-      if (changed.moduleId === 'Finance' && updates.isPaid !== undefined) {
-        const statuses = current.moduleConfigs.find((config) => config.moduleId === 'Finance')?.customStatuses ?? [];
-        tasks = tasks.map((item) => item.id !== taskId ? item : updates.isPaid
-          ? { ...item, previousStatus: item.status, status: statuses.at(-1) ?? item.status, paidAt: now }
-          : { ...item, status: item.previousStatus ?? statuses[0] ?? item.status, previousStatus: undefined, paidAt: undefined });
-      }
-      return { ...current, tasks };
-    });
+    updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, addTask, deleteTask, updateTask };
 }

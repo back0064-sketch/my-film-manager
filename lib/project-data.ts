@@ -1,4 +1,4 @@
-import { ModuleConfig, ModuleId, ProjectData, Task } from '@/types/project';
+import { ExpenseCategory, EXPENSE_CATEGORIES, ModuleConfig, ModuleId, ProjectData, Task } from '@/types/project';
 
 export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
   { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
@@ -8,6 +8,11 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
 ];
 
 const moduleIds = new Set<ModuleId>(['Scripting', 'OnSite', 'PostProduction', 'Finance']);
+const expenseCategories = new Set<ExpenseCategory>(EXPENSE_CATEGORIES);
+
+function emptyBudgetByCategory(): Record<ExpenseCategory, number> {
+  return { Scripting: 0, OnSite: 0, PostProduction: 0 };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -21,6 +26,10 @@ function cleanTask(value: unknown): Task | null {
     moduleId: value.moduleId as ModuleId,
     title: typeof value.title === 'string' ? value.title : '未命名任務',
     status: typeof value.status === 'string' ? value.status : '未分類',
+    description: typeof value.description === 'string' ? value.description : undefined,
+    assignee: typeof value.assignee === 'string' ? value.assignee : undefined,
+    dueDate: typeof value.dueDate === 'string' ? value.dueDate : undefined,
+    expenseCategory: expenseCategories.has(value.expenseCategory as ExpenseCategory) ? value.expenseCategory as ExpenseCategory : undefined,
     amount: typeof value.amount === 'number' ? value.amount : 0,
     isPaid: value.isPaid === true,
     linkedTaskId: typeof value.linkedTaskId === 'string' ? value.linkedTaskId : undefined,
@@ -28,6 +37,15 @@ function cleanTask(value: unknown): Task | null {
     paidAt: typeof value.paidAt === 'string' ? value.paidAt : undefined,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
   };
+}
+
+function cleanBudgetByCategory(value: unknown): Record<ExpenseCategory, number> {
+  const budget = emptyBudgetByCategory();
+  if (!isRecord(value)) return budget;
+  EXPENSE_CATEGORIES.forEach((category) => {
+    if (typeof value[category] === 'number' && Number.isFinite(value[category])) budget[category] = Math.max(0, value[category]);
+  });
+  return budget;
 }
 
 function cleanModuleConfigs(value: unknown): ModuleConfig[] {
@@ -41,7 +59,7 @@ function cleanModuleConfigs(value: unknown): ModuleConfig[] {
 }
 
 export function createProjectData(id: string, name = '未命名影視專案'): ProjectData {
-  return { id, name, isFlatRate: false, tasks: [], moduleConfigs: DEFAULT_MODULE_CONFIGS };
+  return { id, name, isFlatRate: false, budgetByCategory: emptyBudgetByCategory(), tasks: [], moduleConfigs: DEFAULT_MODULE_CONFIGS };
 }
 
 export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData | null {
@@ -58,6 +76,7 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
     id: fallbackId || (typeof source.id === 'string' ? source.id : ''),
     name: name ?? '未命名影視專案',
     isFlatRate: source.isFlatRate === true,
+    budgetByCategory: cleanBudgetByCategory(source.budgetByCategory),
     tasks,
     moduleConfigs: cleanModuleConfigs(source.moduleConfigs),
   };

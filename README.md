@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 影視製片控制台
 
-## Getting Started
+以 Next.js 與 Supabase 建立的影視專案、製作進度與款項管理工具。
 
-First, run the development server:
+## 本機開發
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+開啟 [http://localhost:3000](http://localhost:3000)。請先複製 `.env.example` 為 `.env.local`，並填入 Supabase 專案設定。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 驗證
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run test
+npm run lint
+npm run build
+```
 
-## Learn More
+GitHub Actions 會在推送到 `main` 或建立以 `main` 為目標的 Pull Request 時，自動執行以上檢查。
 
-To learn more about Next.js, take a look at the following resources:
+## 部署至 Vercel
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. 前往 [Vercel](https://vercel.com/new)，以 GitHub 登入後匯入 `back0064-sketch/my-film-manager`。
+2. 在 **Environment Variables** 新增 `.env.example` 所列的兩個變數，分別填入 Supabase 專案 URL 與匿名金鑰。
+3. 按下 **Deploy**。之後推送到 `main` 會自動部署，Pull Request 則會建立預覽部署。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+部署完成後，請在 Supabase 的 Authentication URL 設定中加入 Vercel 網址，讓登入 Cookie 與重新導向可正常運作。
