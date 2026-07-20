@@ -1,214 +1,111 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useEffect, useState } from 'react';
+import { projectApi } from '@/lib/api/project-api';
+import { cleanProjectData, createProjectData } from '@/lib/project-data';
+import { ModuleId, ProjectData, Task } from '@/types/project';
 
-// 🧼 智慧格式清洗大師
-function cleanProjectData(raw: any, fallbackId: string) {
-  if (!raw) return null;
-  let target = raw.project_data ? raw.project_data : raw;
-  return {
-    id: fallbackId || target.id || raw.id,
-    name: target.name || target.title || target.projectName || target.project_name || raw.name || "未命名影視專案",
-    isFlatRate: target.isFlatRate || false,
-    tasks: Array.isArray(target.tasks) ? target.tasks : [],
-    moduleConfigs: target.moduleConfigs && target.moduleConfigs.length > 0 ? target.moduleConfigs : [
-      { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
-      { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'] },
-      { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'] },
-      { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] }
-    ]
-  };
-}
+const financeLabels: Partial<Record<ModuleId, string>> = {
+  Scripting: '腳本費',
+  OnSite: '拍攝費',
+  PostProduction: '剪輯費',
+};
+
+const createTaskId = () => crypto.randomUUID();
 
 export function useProjectData(projectId: string) {
-  const [project, setProject] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [project, setProject] = useState<ProjectData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const triggerModules: Record<string, string> = {
-    'Scripting': '腳本費',
-    'OnSite': '拍攝費',
-    'PostProduction': '剪輯費'
-  };
-
-  // 1. 🔍 讀取資料
   useEffect(() => {
-    if (!projectId) return;
+    let cancelled = false;
 
-    async function fetchProject() {
-      const localData = localStorage.getItem(projectId);
-      if (localData) {
+    async function loadProject() {
+      let localProject: ProjectData | null = null;
+      const cached = localStorage.getItem(projectId);
+      if (cached) {
         try {
-          const cleaned = cleanProjectData(JSON.parse(localData), projectId);
-          if (cleaned) {
-            setProject(cleaned);
-            setLoading(false);
-          }
-        } catch (e) { console.error(e); }
+          localProject = cleanProjectData(JSON.parse(cached), projectId);
+          if (localProject && !cancelled) setProject(localProject);
+        } catch {
+          localStorage.removeItem(projectId);
+        }
       }
 
-      try {
-        const { data } = await supabase
-          .from('film_projects')
-          .select('project_data')
-          .eq('id', projectId)
-          .maybeSingle();
+      let cloudProject: ProjectData | null = null;
+      try { cloudProject = await projectApi.get(projectId); } catch { /* Offline mode keeps local data. */ }
 
-        if (data && data.project_data) {
-          const cleaned = cleanProjectData(data.project_data, projectId);
-          if (cleaned) {
-            setProject(cleaned);
-            localStorage.setItem(projectId, JSON.stringify(cleaned));
-          }
-        } else if (!localData) {
-          const blank = cleanProjectData({ id: projectId }, projectId);
-          setProject(blank);
-          localStorage.setItem(projectId, JSON.stringify(blank));
-        }
-      } catch (err) {
-        console.error('❌ 雲端讀取失敗:', err);
-      } finally {
+      if (!cancelled) {
+        const nextProject = cloudProject ?? localProject ?? createProjectData(projectId);
+        setProject(nextProject);
+        localStorage.setItem(projectId, JSON.stringify(nextProject));
         setLoading(false);
       }
     }
 
-    fetchProject();
+    void loadProject();
+    return () => { cancelled = true; };
   }, [projectId]);
 
-  // 2. ⚡ 背景同步
   useEffect(() => {
-    if (!project || !projectId || loading || Array.isArray(project)) return;
-
-    const delayDebounceFn = setTimeout(async () => {
+    if (!project || loading) return;
+    const timer = window.setTimeout(async () => {
+      localStorage.setItem(projectId, JSON.stringify(project));
       try {
-        localStorage.setItem(projectId, JSON.stringify(project));
-        await supabase
-          .from('film_projects')
-          .upsert({
-            id: projectId,
-            name: project.name || '未命名專案',
-            project_data: project, 
-            updated_at: new Date().toISOString()
-          });
-      } catch (err) {
-        console.error('❌ 雲端同步失敗:', err);
-      }
+        await projectApi.save(project);
+      } catch { /* Offline mode keeps local data. */ }
     }, 600);
+    return () => window.clearTimeout(timer);
+  }, [loading, project, projectId]);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [project, projectId, loading]);
+  const updateProject = (updater: (current: ProjectData) => ProjectData) => {
+    setProject((current) => (current ? updater(current) : current));
+  };
 
-  // ➕ 新增任務（滿血復活自動防呆財務連動）
-  const addTask = (title: string, moduleId: string, status: string) => {
-    if (!project) return;
-    
-    const newTaskId = Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
-    
-    // 🔥 核心修復：強制賦予 any 型別，破除物件字面量的屬性鎖定，徹底根除 Line 140 附近的編譯阻擋！
-    const newTask: any = {
-      id: newTaskId,
-      moduleId,
-      title,
-      status,
-      note: "",
-      subTasks: [],
-      assets: [],
-      amount: 0,
-      isPaid: false,
-      linkedTaskId: undefined,
-      updatedAt: new Date()
-    };
-    
-    let nextTasks = [...project.tasks, newTask];
-    
-    if (!project.isFlatRate && triggerModules[moduleId]) {
-      const financeConfig = project.moduleConfigs.find((c: any) => c.moduleId === 'Finance');
-      const firstFinanceStatus = financeConfig?.customStatuses?.[0] || '📝 待請款';
-      const financeTaskId = Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
-      const suffix = triggerModules[moduleId];
-      
-      const linkedFinanceTask: any = {
-        id: financeTaskId,
-        moduleId: 'Finance',
-        title: `${title} (${suffix})`,
-        status: firstFinanceStatus,
-        note: `💡 此帳目由系統全自動防呆連動建立。`,
-        subTasks: [],
-        assets: [],
-        amount: 0,
-        isPaid: false,
-        linkedTaskId: newTaskId,
-        updatedAt: new Date()
+  const addTask = (title: string, moduleId: ModuleId, status: string) => {
+    updateProject((current) => {
+      const taskId = createTaskId();
+      const task: Task = { id: taskId, moduleId, title, status, amount: 0, isPaid: false, updatedAt: new Date().toISOString() };
+      const label = financeLabels[moduleId];
+      if (!label || current.isFlatRate) return { ...current, tasks: [...current.tasks, task] };
+
+      const financeStatus = current.moduleConfigs.find((config) => config.moduleId === 'Finance')?.customStatuses[0] ?? '📝 待請款';
+      const financeTask: Task = {
+        id: createTaskId(), moduleId: 'Finance', title: `${title} (${label})`, status: financeStatus,
+        amount: 0, isPaid: false, linkedTaskId: taskId, updatedAt: new Date().toISOString(),
       };
-      newTask.linkedTaskId = financeTaskId;
-      nextTasks.push(linkedFinanceTask);
-    }
-
-    const updated = { ...project, tasks: nextTasks };
-    setProject(updated);
-    localStorage.setItem(projectId, JSON.stringify(updated));
+      task.linkedTaskId = financeTask.id;
+      return { ...current, tasks: [...current.tasks, task, financeTask] };
+    });
   };
 
-  // 🗑️ 刪除任務
-  const deleteTask = (id: string) => {
-    if (!project) return;
-    const targetTask = project.tasks.find((t: any) => t.id === id);
-    let nextTasks = project.tasks.filter((t: any) => t.id !== id);
-    
-    if (targetTask?.linkedTaskId) {
-      nextTasks = nextTasks.filter((t: any) => t.id !== targetTask.linkedTaskId);
-    }
-    
-    const updated = { ...project, tasks: nextTasks };
-    setProject(updated);
-    localStorage.setItem(projectId, JSON.stringify(updated));
+  const deleteTask = (taskId: string) => {
+    updateProject((current) => {
+      const linkedId = current.tasks.find((task) => task.id === taskId)?.linkedTaskId;
+      return { ...current, tasks: current.tasks.filter((task) => task.id !== taskId && task.id !== linkedId) };
+    });
   };
 
-  // ⚡ 修改任務（金額統計與已支付全自動跳轉）
-  const updateTask = (id: string, updates: any) => {
-    if (!project) return;
-    let updatedTasks = project.tasks.map((t: any) => t.id === id ? { ...t, ...updates, updatedAt: new Date() } : t);
-    const currentTask = updatedTasks.find((t: any) => t.id === id);
-    
-    if (currentTask) {
-      if (updates.title && currentTask.linkedTaskId) {
-        updatedTasks = updatedTasks.map((t: any) => {
-          if (t.id === currentTask.linkedTaskId) {
-            let nextLinkedTitle = updates.title;
-            if (currentTask.moduleId === 'Finance') {
-              nextLinkedTitle = updates.title.replace(' (腳本費)', '').replace(' (拍攝費)', '').replace(' (剪輯費)', '');
-            } else if (triggerModules[currentTask.moduleId]) {
-              nextLinkedTitle = `${updates.title} (${triggerModules[currentTask.moduleId]})`;
-            }
-            return { ...t, title: nextLinkedTitle, updatedAt: new Date() };
-          }
-          return t;
-        });
+  const updateTask = (taskId: string, updates: Partial<Task>) => {
+    updateProject((current) => {
+      const task = current.tasks.find((item) => item.id === taskId);
+      if (!task) return current;
+      const now = new Date().toISOString();
+      let tasks = current.tasks.map((item) => item.id === taskId ? { ...item, ...updates, updatedAt: now } : item);
+      const changed = tasks.find((item) => item.id === taskId)!;
+
+      if (updates.title && changed.moduleId !== 'Finance' && changed.linkedTaskId) {
+        tasks = tasks.map((item) => item.id === changed.linkedTaskId
+          ? { ...item, title: `${updates.title} (${financeLabels[changed.moduleId] ?? '費用'})`, updatedAt: now }
+          : item);
       }
 
-      if (currentTask.moduleId === 'Finance' && updates.isPaid !== undefined) {
-        const financeConfig = project.moduleConfigs.find((c: any) => c.moduleId === 'Finance');
-        const statuses = financeConfig?.customStatuses || ['📝 待請款', '⏳ 審核中', '💰 已入帳'];
-        
-        if (updates.isPaid === true) {
-          updatedTasks = updatedTasks.map((t: any) => t.id === id ? { 
-            ...t, 
-            previousStatus: t.status, 
-            status: statuses[statuses.length - 1], 
-            paidAt: new Date().toISOString()
-          } : t);
-        } else if (updates.isPaid === false) {
-          updatedTasks = updatedTasks.map((t: any) => t.id === id ? { 
-            ...t, 
-            status: t.previousStatus || statuses[0], 
-            previousStatus: undefined,
-            paidAt: undefined 
-          } : t);
-        }
+      if (changed.moduleId === 'Finance' && updates.isPaid !== undefined) {
+        const statuses = current.moduleConfigs.find((config) => config.moduleId === 'Finance')?.customStatuses ?? [];
+        tasks = tasks.map((item) => item.id !== taskId ? item : updates.isPaid
+          ? { ...item, previousStatus: item.status, status: statuses.at(-1) ?? item.status, paidAt: now }
+          : { ...item, status: item.previousStatus ?? statuses[0] ?? item.status, previousStatus: undefined, paidAt: undefined });
       }
-    }
-
-    const updated = { ...project, tasks: updatedTasks };
-    setProject(updated);
-    localStorage.setItem(projectId, JSON.stringify(updated));
+      return { ...current, tasks };
+    });
   };
 
   return { project, loading, addTask, deleteTask, updateTask };

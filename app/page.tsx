@@ -1,363 +1,145 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
+import { useEffect, useState } from 'react';
+import { useProjectData } from '@/hooks/useProjectData';
+import { projectApi } from '@/lib/api/project-api';
+import { cleanProjectData, createProjectData } from '@/lib/project-data';
+import { MODULES, ModuleId, ProjectListItem } from '@/types/project';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useProjectData } from '../hooks/useProjectData';
-
-function cleanProjectData(raw: any, fallbackId: string) {
-  if (!raw) return null;
-  let target = raw.project_data ? raw.project_data : raw;
-  return {
-    id: fallbackId || target.id || raw.id,
-    name: target.name || target.title || target.projectName || target.project_name || raw.name || "未命名影視專案",
-    isFlatRate: target.isFlatRate || false,
-    tasks: Array.isArray(target.tasks) ? target.tasks : [],
-    moduleConfigs: target.moduleConfigs && target.moduleConfigs.length > 0 ? target.moduleConfigs : [
-      { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
-      { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'] },
-      { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'] },
-      { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] }
-    ]
-  };
-}
+const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+type SessionUser = { id: string; email?: string };
 
 export default function Home() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [projectList, setProjectList] = useState<any[]>([]);
-  const [lobbyLoading, setLobbyLoading] = useState<boolean>(true);
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newProjectName, setNewProjectName] = useState('');
-
-  const loadLobbyProjects = async () => {
-    setLobbyLoading(true);
-    const localProjects: any[] = [];
-    
-    try {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      Object.keys(localStorage).forEach((key: any) => {
-        if (uuidRegex.test(key)) {
-          const str = localStorage.getItem(key);
-          if (str) {
-            try {
-              const cleaned = cleanProjectData(JSON.parse(str), key);
-              if (cleaned) {
-                localProjects.push({ id: key, name: cleaned.name, updated_at: new Date().toISOString() });
-              }
-            } catch(e){}
-          }
-        }
-      });
-    } catch (e) {}
-    
-    setProjectList(localProjects);
-
-    try {
-      const { data } = await supabase
-        .from('film_projects')
-        .select('id, name, updated_at, project_data')
-        .order('updated_at', { ascending: false });
-
-      if (data && data.length > 0) {
-        const mergedMap = new Map();
-        localProjects.forEach((p: any) => mergedMap.set(p.id, p));
-        
-        data.forEach((p: any) => {
-          const cleaned = cleanProjectData(p.project_data || p, p.id);
-          if (cleaned) {
-            localStorage.setItem(p.id, JSON.stringify(cleaned));
-            mergedMap.set(p.id, { id: p.id, name: p.name || cleaned.name, updated_at: p.updated_at || new Date().toISOString() });
-          }
-        });
-        setProjectList(Array.from(mergedMap.values()));
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLobbyLoading(false);
-    }
-  };
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
 
   useEffect(() => {
-    if (!activeProjectId) loadLobbyProjects();
-  }, [activeProjectId]);
+    void projectApi.session().then(setUser).catch(() => setUser(null)).finally(() => setSessionLoading(false));
+  }, []);
 
-  const handleCreateProject = async () => {
-    if (!newProjectName.trim()) return;
-    const newId = crypto.randomUUID();
-    const defaultData = cleanProjectData({ id: newId, name: newProjectName.trim() }, newId);
+  useEffect(() => {
+    if (activeProjectId || !user) return;
+    let cancelled = false;
 
-    localStorage.setItem(newId, JSON.stringify(defaultData));
-    try {
-      await supabase.from('film_projects').upsert({
-        id: newId,
-        name: newProjectName.trim(),
-        project_data: defaultData,
-        updated_at: new Date().toISOString()
-      });
-    } catch (err) {}
+    async function loadProjects() {
+      const projectMap = new Map<string, ProjectListItem>();
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const id = localStorage.key(index);
+        if (!id || !isProjectId(id)) continue;
+        try {
+          const raw = localStorage.getItem(id);
+          const project = raw ? cleanProjectData(JSON.parse(raw), id) : null;
+          if (project) projectMap.set(id, { id, name: project.name, updated_at: new Date().toISOString() });
+        } catch {
+          localStorage.removeItem(id);
+        }
+      }
 
+      try {
+        const cloudProjects = await projectApi.list();
+        cloudProjects.forEach((project) => projectMap.set(project.id, project));
+      } catch { /* Offline mode keeps local projects. */ }
+      if (!cancelled) {
+        setProjects([...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+        setLoading(false);
+      }
+    }
+
+    void loadProjects();
+    return () => { cancelled = true; };
+  }, [activeProjectId, user]);
+
+  const createProject = async () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    const id = crypto.randomUUID();
+    const project = createProjectData(id, name);
+    localStorage.setItem(id, JSON.stringify(project));
+    try { await projectApi.save(project); } catch { /* Offline mode keeps local data. */ }
     setNewProjectName('');
-    setActiveProjectId(newId);
+    setActiveProjectId(id);
   };
 
-  const handleDeleteProject = async (id: string, name: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm(`確定要永久刪除【${name}】這個專案看板嗎？`)) return;
-    
-    localStorage.removeItem(id);
-    setProjectList((prev: any[]) => prev.filter((p: any) => p.id !== id));
-    
-    try {
-      await supabase.from('film_projects').delete().eq('id', id);
-    } catch (err) {}
+  const deleteProject = async (project: ProjectListItem) => {
+    if (!confirm(`確定要永久刪除「${project.name}」嗎？`)) return;
+    localStorage.removeItem(project.id);
+    setProjects((current) => current.filter((item) => item.id !== project.id));
+    try { await projectApi.remove(project.id); } catch { /* Offline mode keeps local data. */ }
   };
 
-  if (!activeProjectId) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
-        <div className="max-w-5xl mx-auto">
-          <header className="mb-12 border-b border-slate-800 pb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div>
-              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
-                🎬 影視製片控制台
-              </h1>
-              <p className="text-slate-400 text-sm mt-2">中央大廳 • 智慧款取核心完全體</p>
-            </div>
-          </header>
+  if (sessionLoading) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">登入狀態確認中…</main>;
+  if (!user) return <AuthScreen onAuthenticated={setUser} />;
+  if (activeProjectId) return <ProjectBoard projectId={activeProjectId} onBack={() => setActiveProjectId(null)} />;
 
-          <div className="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl mb-8 flex flex-col sm:flex-row gap-4 items-center">
-            <input
-              type="text"
-              placeholder="✨ 請輸入全新影視專案名稱..."
-              value={newProjectName}
-              onChange={(e: any) => setNewProjectName(e.target.value)}
-              className="w-full flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition"
-            />
-            <button
-              onClick={handleCreateProject}
-              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-6 py-3 rounded-xl transition shadow-md whitespace-nowrap"
-            >
-              ➕ 建立新專案
-            </button>
-          </div>
-
-          <h2 className="text-lg font-bold text-slate-300 mb-4">🗂️ 當前專案看板清單 ({projectList.length})</h2>
-
-          {lobbyLoading && projectList.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 flex flex-col items-center gap-2">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
-              <p className="text-sm">資料庫校正中...</p>
-            </div>
-          ) : projectList.length === 0 ? (
-            <div className="text-center py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl">
-              <p className="text-slate-500 text-sm italic">尚無任何專案，請在上方建立專案。</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {projectList.map((p: any) => (
-                <div
-                  key={p.id}
-                  onClick={() => setActiveProjectId(p.id)}
-                  className="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 p-6 rounded-2xl cursor-pointer transition flex justify-between items-center group shadow-sm"
-                >
-                  <div>
-                    <h3 className="font-bold text-lg text-slate-200 group-hover:text-indigo-400 transition">
-                      {p.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-1">⚡ 獨立同步通道已建立</p>
-                  </div>
-                  <button
-                    onClick={(e: any) => handleDeleteProject(p.id, p.name, e)}
-                    className="p-2 text-slate-600 hover:text-rose-400 rounded-lg hover:bg-slate-950 opacity-0 group-hover:opacity-100 transition"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+  return <main className="min-h-screen bg-slate-950 p-6 text-slate-100 md:p-12">
+    <div className="mx-auto max-w-5xl">
+      <header className="mb-10 flex items-start justify-between border-b border-slate-800 pb-7">
+        <div><h1 className="text-4xl font-black text-indigo-400">🎬 影視製片控制台</h1><p className="mt-2 text-sm text-slate-400">專案、製作進度與款項管理</p></div>
+        <div className="text-right text-xs text-slate-400"><p>{user.email}</p><button onClick={() => void projectApi.signOut().finally(() => { setProjects([]); setUser(null); })} className="mt-2 text-rose-400 hover:text-rose-300">登出</button></div>
+      </header>
+      <div className="mb-8 flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6 sm:flex-row">
+        <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void createProject()} placeholder="輸入新的影視專案名稱" className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm" />
+        <button onClick={() => void createProject()} className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold hover:bg-indigo-500">建立新專案</button>
       </div>
-    );
-  }
-
-  return (
-    <InnerProjectBoard 
-      projectId={activeProjectId} 
-      onBackToLobby={() => setActiveProjectId(null)} 
-    />
-  );
+      <h2 className="mb-4 text-lg font-bold">專案看板 ({projects.length})</h2>
+      {loading ? <p className="py-12 text-center text-slate-500">資料載入中…</p> : projects.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-800 py-16 text-center text-sm text-slate-500">尚無專案，請從上方建立。</p> :
+        <div className="grid gap-4 md:grid-cols-2">{projects.map((project) => <article key={project.id} onClick={() => setActiveProjectId(project.id)} className="flex cursor-pointer items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 p-6 hover:border-indigo-500">
+          <h3 className="text-lg font-bold">{project.name}</h3>
+          <button onClick={(event) => { event.stopPropagation(); void deleteProject(project); }} aria-label={`刪除 ${project.name}`} className="rounded-lg p-2 text-slate-500 hover:text-rose-400">🗑️</button>
+        </article>)}</div>}
+    </div>
+  </main>;
 }
 
-function InnerProjectBoard({ projectId, onBackToLobby }: { projectId: string; onBackToLobby: () => void }) {
+function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) => void }) {
+  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [pending, setPending] = useState(false);
+  const submit = async () => {
+    setPending(true); setMessage('');
+    try {
+      if (mode === 'signIn') onAuthenticated(await projectApi.signIn(email, password));
+      else {
+        const result = await projectApi.signUp(email, password);
+        setMessage(result.needsEmailConfirmation ? '註冊成功，請到信箱完成驗證後再登入。' : '註冊成功，請使用新帳號登入。');
+        setMode('signIn');
+      }
+    } catch (error) { setMessage(error instanceof Error ? error.message : '操作失敗'); }
+    finally { setPending(false); }
+  };
+  const isSignIn = mode === 'signIn';
+  return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl"><h1 className="text-3xl font-black text-indigo-400">🎬 影視製片控制台</h1><p className="mt-2 text-sm text-slate-400">{isSignIn ? '登入以存取你的專案。' : '建立帳號以開始管理專案。'}</p><div className="mt-6 space-y-4"><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void submit()} placeholder="密碼（至少 8 字元）" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} onClick={() => void submit()} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '處理中…' : isSignIn ? '登入' : '註冊'}</button></div>{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}<button onClick={() => { setMode(isSignIn ? 'signUp' : 'signIn'); setMessage(''); }} className="mt-6 text-sm text-indigo-400 hover:text-indigo-300">{isSignIn ? '還沒有帳號？立即註冊' : '已有帳號？回到登入'}</button></section></main>;
+}
+
+function ProjectBoard({ projectId, onBack }: { projectId: string; onBack: () => void }) {
   const { project, loading, addTask, deleteTask, updateTask } = useProjectData(projectId);
+  const [activeModule, setActiveModule] = useState<ModuleId>('Scripting');
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [activeModule, setActiveModule] = useState<string>('Scripting');
+  if (loading || !project) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">專案載入中…</main>;
 
-  const rawProject: any = project;
-  const currentProject = rawProject && rawProject.project_data ? rawProject.project_data : (rawProject || { name: "載入中專案...", tasks: [], moduleConfigs: [] });
+  const financeTasks = project.tasks.filter((task) => task.moduleId === 'Finance');
+  const total = financeTasks.reduce((sum, task) => sum + task.amount, 0);
+  const paid = financeTasks.filter((task) => task.isPaid).reduce((sum, task) => sum + task.amount, 0);
+  const statuses = project.moduleConfigs.find((config) => config.moduleId === activeModule)?.customStatuses ?? [];
+  const createTask = () => {
+    const title = newTaskTitle.trim();
+    if (!title || !statuses[0]) return;
+    addTask(title, activeModule, statuses[0]);
+    setNewTaskTitle('');
+  };
 
-  const configs = currentProject.moduleConfigs && currentProject.moduleConfigs.length > 0
-    ? currentProject.moduleConfigs
-    : [
-        { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
-        { moduleId: 'OnSite', customStatuses: ['🎥 準備中', '🎬 拍攝中', '📦 已殺青'] },
-        { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'] },
-        { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] }
-      ];
-
-  // 💰🔥 核心加強：即時加總計算所有財務項目的金額！
-  const financeTasks = (currentProject.tasks || []).filter((t: any) => t.moduleId === 'Finance');
-  const totalAmount = financeTasks.reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
-  const paidAmount = financeTasks.filter((t: any) => t.isPaid).reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
-  const unpaidAmount = totalAmount - paidAmount;
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <header className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBackToLobby}
-              className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-            >
-              ⬅️ 返回專案大廳
-            </button>
-            <div>
-              <h1 className="text-2xl font-black text-slate-100">
-                {currentProject.name || "進行中專案"}
-              </h1>
-              <p className="text-slate-500 text-xs mt-0.5">☁️ 數據雙軌同步保護中</p>
-            </div>
-          </div>
-        </header>
-
-        {/* 💰📊 【重磅回歸】款項統計中央控制 Dashboard 卡片區塊 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="text-xs font-semibold text-slate-400">📊 專案款項總額 (Total)</div>
-            <div className="text-2xl font-black text-indigo-400 mt-2">
-              NT$ {totalAmount.toLocaleString()}
-            </div>
-          </div>
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="text-xs font-semibold text-slate-400">💰 已入帳總額 (Paid)</div>
-            <div className="text-2xl font-black text-emerald-400 mt-2">
-              NT$ {paidAmount.toLocaleString()}
-            </div>
-          </div>
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="text-xs font-semibold text-slate-400">⏳ 待收尾尾款 (Remaining)</div>
-            <div className="text-2xl font-black text-amber-400 mt-2">
-              NT$ {unpaidAmount.toLocaleString()}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1 bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 h-fit">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 px-2">看板階段</h3>
-            <div className="flex flex-col gap-1">
-              {[
-                { id: 'Scripting', name: '✍️ 腳本階段' },
-                { id: 'OnSite', name: '🎥 拍攝現場' },
-                { id: 'PostProduction', name: '✂️ 後期剪輯' },
-                { id: 'Finance', name: '💰 財務帳目' }
-              ].map((m: any) => (
-                <button
-                  key={m.id}
-                  onClick={() => setActiveModule(m.id)}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition ${
-                    activeModule === m.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-                  }`}
-                >
-                  {m.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="lg:col-span-3 space-y-4">
-            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex gap-3">
-              <input
-                type="text"
-                placeholder="💡 輸入任務名稱，按下 Enter 快速新增..."
-                value={newTaskTitle}
-                onChange={(e: any) => setNewTaskTitle(e.target.value)}
-                onKeyDown={(e: any) => {
-                  if (e.key === 'Enter' && newTaskTitle.trim()) {
-                    const config = (configs as any[]).find((c: any) => c.moduleId === activeModule);
-                    const firstStatus = config?.customStatuses?.[0] || '未分類';
-                    addTask(newTaskTitle.trim(), activeModule as any, firstStatus);
-                    setNewTaskTitle('');
-                  }
-                }}
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {((configs as any[]).find((c: any) => c.moduleId === activeModule)?.customStatuses || []).map((status: any) => {
-                const moduleTasks = (currentProject.tasks || []).filter((t: any) => t.moduleId === activeModule && t.status === status);
-                return (
-                  <div key={status} className="bg-slate-900/20 rounded-xl border border-slate-800 p-4 flex flex-col min-h-[350px]">
-                    <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800/60">
-                      <span className="font-bold text-xs text-slate-400 tracking-wide uppercase">{status}</span>
-                      <span className="bg-slate-800 text-slate-400 text-xs px-2 py-0.5 rounded-full">{moduleTasks.length}</span>
-                    </div>
-
-                    <div className="space-y-2 flex-1 overflow-y-auto">
-                      {moduleTasks.map((task: any) => (
-                        <div key={task.id} className="bg-slate-900 border border-slate-800 p-3 rounded-lg hover:border-slate-700 transition group shadow-sm">
-                          <div className="flex justify-between items-start gap-2">
-                            <input
-                              type="text"
-                              value={task.title}
-                              onChange={(e: any) => updateTask(task.id, { title: e.target.value })}
-                              className="bg-transparent text-sm text-slate-200 font-medium focus:outline-none focus:bg-slate-950 px-1 py-0.5 rounded w-full"
-                            />
-                            <button
-                              onClick={() => deleteTask(task.id)}
-                              className="text-slate-600 hover:text-rose-400 text-xs opacity-0 group-hover:opacity-100 transition"
-                            >✕</button>
-                          </div>
-
-                          {activeModule === 'Finance' && (
-                            <div className="mt-3 pt-3 border-t border-slate-800/50 flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs text-slate-600">NT$</span>
-                                <input
-                                  type="number"
-                                  value={task.amount || 0}
-                                  onChange={(e: any) => updateTask(task.id, { amount: Number(e.target.value) })}
-                                  className="w-24 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-emerald-400 focus:outline-none font-bold"
-                                />
-                              </div>
-                              <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={task.isPaid || false}
-                                  onChange={(e: any) => updateTask(task.id, { isPaid: e.target.checked })}
-                                  className="rounded border-slate-800 text-indigo-600 focus:ring-0 bg-slate-950 h-3.5 w-3.5"
-                                />
-                                <span className="text-xs text-slate-400 select-none">已支付</span>
-                              </label>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {moduleTasks.length === 0 && (
-                        <p className="text-xs text-slate-700 text-center py-12 italic">尚無任務</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <main className="min-h-screen bg-slate-950 p-4 text-slate-100 md:p-8"><div className="mx-auto max-w-7xl">
+    <header className="mb-6 flex items-center gap-4 border-b border-slate-800 pb-6"><button onClick={onBack} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs">← 返回大廳</button><div><h1 className="text-2xl font-black">{project.name}</h1><p className="text-xs text-slate-500">本機優先，背景同步至雲端</p></div></header>
+    <div className="mb-8 grid gap-4 md:grid-cols-3">{[['專案款項總額', total, 'text-indigo-400'], ['已入帳總額', paid, 'text-emerald-400'], ['待收款', total - paid, 'text-amber-400']].map(([label, amount, color]) => <section key={label as string} className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><p className="text-xs text-slate-400">{label}</p><p className={`mt-2 text-2xl font-black ${color}`}>NT$ {(amount as number).toLocaleString()}</p></section>)}</div>
+    <div className="grid gap-6 lg:grid-cols-4"><nav className="h-fit rounded-xl border border-slate-800 bg-slate-900/40 p-4">{MODULES.map((module) => <button key={module.id} onClick={() => setActiveModule(module.id)} className={`mb-1 w-full rounded-lg px-4 py-3 text-left text-sm font-semibold ${activeModule === module.id ? 'bg-indigo-600' : 'text-slate-400 hover:bg-slate-800'}`}>{module.name}</button>)}</nav>
+      <section className="space-y-4 lg:col-span-3"><input value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && createTask()} placeholder="輸入任務名稱後按 Enter 新增" className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm" />
+        <div className="grid gap-4 md:grid-cols-3">{statuses.map((status) => { const tasks = project.tasks.filter((task) => task.moduleId === activeModule && task.status === status); return <section key={status} className="flex min-h-80 flex-col rounded-xl border border-slate-800 bg-slate-900/20 p-4"><header className="mb-4 flex justify-between border-b border-slate-800 pb-2 text-xs font-bold text-slate-400"><span>{status}</span><span>{tasks.length}</span></header><div className="space-y-2">{tasks.map((task) => <article key={task.id} className="rounded-lg border border-slate-800 bg-slate-900 p-3"><div className="flex gap-2"><input value={task.title} onChange={(event) => updateTask(task.id, { title: event.target.value })} className="min-w-0 flex-1 bg-transparent text-sm" /><button onClick={() => deleteTask(task.id)} className="text-rose-400">×</button></div>{activeModule === 'Finance' && <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-3"><label className="text-xs">NT$ <input type="number" value={task.amount} onChange={(event) => updateTask(task.id, { amount: Number(event.target.value) })} className="w-24 rounded border border-slate-800 bg-slate-950 px-1 text-emerald-400" /></label><label className="text-xs"><input type="checkbox" checked={task.isPaid} onChange={(event) => updateTask(task.id, { isPaid: event.target.checked })} /> 已支付</label></div>}</article>)}{tasks.length === 0 && <p className="py-12 text-center text-xs text-slate-600">尚無任務</p>}</div></section>; })}</div>
+      </section></div>
+  </div></main>;
 }
