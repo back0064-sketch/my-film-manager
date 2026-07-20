@@ -1,16 +1,15 @@
-import { ModuleId } from '../constants/modules';
+export const MODULES = [
+  { id: 'Scripting', name: '✍️ 腳本階段' },
+  { id: 'OnSite', name: '🎥 拍攝現場' },
+  { id: 'PostProduction', name: '✂️ 後期剪輯' },
+  { id: 'Finance', name: '💰 財務帳目' },
+] as const;
 
-export interface AssetLink {
-  id: string;
-  title: string;
-  url: string;
-}
+export type ModuleId = (typeof MODULES)[number]['id'];
 
-export interface SubTask {
-  id: string;
-  title: string;
-  isCompleted: boolean;
-  subTasks: SubTask[];
+export interface ModuleConfig {
+  moduleId: ModuleId;
+  customStatuses: string[];
 }
 
 export interface Task {
@@ -18,33 +17,28 @@ export interface Task {
   moduleId: ModuleId;
   title: string;
   status: string;
+  amount: number;
+  isPaid: boolean;
+  linkedTaskId?: string;
   previousStatus?: string;
-  note: string;
-  subTasks: SubTask[];
-  assets: AssetLink[];
-  amount?: number;
-  isTaxInclusive?: boolean;
-  taxRate?: number;
-  isPaid?: boolean;
   paidAt?: string;
-  linkedTaskId?: string; // 互相綁定的任務 ID
-  updatedAt: Date;
+  updatedAt: string;
 }
 
-export interface ModuleConfig {
-  moduleId: ModuleId;
-  customStatuses: string[];
-  collapsedStatuses: string[];
-}
-
-export interface FilmProject {
+export interface ProjectData {
   id: string;
-  clientName: string;
-  projectName: string;
-  enabledModules: ModuleId[];
-  collapsedModules: ModuleId[];
-  moduleConfigs: ModuleConfig[];
+  name: string;
+  isFlatRate: boolean;
   tasks: Task[];
-  isFlatRate?: boolean; // 【新增】是否為全包計費專案
-  createdAt: Date;
+  moduleConfigs: ModuleConfig[];
+}
+
+export interface ProjectListItem {
+  id: string;
+  name: string;
+  updated_at: string;
+}
+
+export interface FilmProjectRow extends ProjectListItem {
+  project_data: ProjectData;
 }
