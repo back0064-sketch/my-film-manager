@@ -1,4 +1,4 @@
-import { ExpenseCategory, EXPENSE_CATEGORIES, ModuleConfig, ModuleId, ProjectData, ProjectType, Task } from '@/types/project';
+import { ExpenseCategory, EXPENSE_CATEGORIES, ModuleConfig, ModuleId, MonthlySettlement, ProjectData, ProjectType, Task } from '@/types/project';
 
 export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
   { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
@@ -45,12 +45,35 @@ function cleanTask(value: unknown): Task | null {
     assignee: typeof value.assignee === 'string' ? value.assignee : undefined,
     dueDate: typeof value.dueDate === 'string' ? value.dueDate : undefined,
     expenseCategory: expenseCategories.has(value.expenseCategory as ExpenseCategory) ? value.expenseCategory as ExpenseCategory : undefined,
+    transactionType: value.transactionType === 'income' ? 'income' : value.moduleId === 'Finance' ? 'expense' : undefined,
+    counterparty: typeof value.counterparty === 'string' ? value.counterparty : undefined,
+    invoiceNumber: typeof value.invoiceNumber === 'string' ? value.invoiceNumber : undefined,
+    paymentMethod: typeof value.paymentMethod === 'string' ? value.paymentMethod : undefined,
+    receiptUrl: typeof value.receiptUrl === 'string' ? value.receiptUrl : undefined,
+    transactionDate: typeof value.transactionDate === 'string' ? value.transactionDate : undefined,
+    readyForCollection: value.readyForCollection === true,
     amount: typeof value.amount === 'number' ? value.amount : 0,
     isPaid: value.isPaid === true,
     linkedTaskId: typeof value.linkedTaskId === 'string' ? value.linkedTaskId : undefined,
     previousStatus: typeof value.previousStatus === 'string' ? value.previousStatus : undefined,
     paidAt: typeof value.paidAt === 'string' ? value.paidAt : undefined,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
+  };
+}
+
+function cleanMonthlySettlement(value: unknown, fallbackId: string): MonthlySettlement | null {
+  if (!isRecord(value)) return null;
+  const month = typeof value.month === 'string' ? value.month : '';
+  if (!/^\d{4}-\d{2}$/.test(month)) return null;
+  return {
+    id: typeof value.id === 'string' ? value.id : fallbackId,
+    month,
+    deliveredCount: typeof value.deliveredCount === 'number' ? Math.max(0, value.deliveredCount) : 0,
+    unitPrice: typeof value.unitPrice === 'number' ? Math.max(0, value.unitPrice) : 0,
+    status: value.status === 'invoiced' || value.status === 'paid' ? value.status : 'pending',
+    invoiceDate: typeof value.invoiceDate === 'string' ? value.invoiceDate : undefined,
+    paidAt: typeof value.paidAt === 'string' ? value.paidAt : undefined,
+    notes: typeof value.notes === 'string' ? value.notes : undefined,
   };
 }
 
@@ -75,7 +98,26 @@ function cleanModuleConfigs(value: unknown): ModuleConfig[] {
 
 export function createProjectData(id: string, name = '未命名影視專案', projectType: ProjectType = 'general'): ProjectData {
   const isFlatRate = projectType === 'shortVideoEditing';
-  return { id, name, projectType, isFlatRate, monthlySettlement: isFlatRate ? { month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending' } : undefined, budgetByCategory: emptyBudgetByCategory(), tasks: [], moduleConfigs: PROJECT_TYPE_TEMPLATES[projectType] };
+  return { id, name, projectType, isFlatRate, monthlySettlements: [], budgetByCategory: emptyBudgetByCategory(), tasks: [], moduleConfigs: PROJECT_TYPE_TEMPLATES[projectType] };
+}
+
+export function switchProjectTemplate(project: ProjectData, projectType: ProjectType): ProjectData {
+  const moduleConfigs = PROJECT_TYPE_TEMPLATES[projectType].map((config) => ({ ...config, customStatuses: [...config.customStatuses] }));
+  const statusesByModule = new Map(moduleConfigs.map((config) => [config.moduleId, config.customStatuses]));
+  const isFlatRate = projectType === 'shortVideoEditing';
+  return {
+    ...project,
+    projectType,
+    isFlatRate,
+    monthlySettlements: project.monthlySettlements,
+    monthlySettlement: project.monthlySettlement,
+    moduleConfigs,
+    tasks: project.tasks.map((task) => {
+      const moduleId = task.moduleId === 'Finance' ? 'Finance' : 'Scripting';
+      const statuses = statusesByModule.get(moduleId) ?? [];
+      return { ...task, moduleId, status: statuses.includes(task.status) ? task.status : statuses[0] ?? task.status, updatedAt: new Date().toISOString() };
+    }),
+  };
 }
 
 export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData | null {
@@ -88,19 +130,40 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
     return cleaned ? [cleaned] : [];
   }) : [];
 
+  const projectType = Object.hasOwn(PROJECT_TYPE_TEMPLATES, source.projectType as string) ? source.projectType as ProjectType : 'general';
+  const moduleConfigs = cleanModuleConfigs(source.moduleConfigs);
+  const primaryStatuses = moduleConfigs.find((config) => config.moduleId === 'Scripting')?.customStatuses ?? [];
+  const consolidatedTasks = tasks.map((task) => {
+    if (task.moduleId === 'Finance') return task;
+    return { ...task, moduleId: 'Scripting' as ModuleId, status: primaryStatuses.includes(task.status) ? task.status : primaryStatuses[0] ?? task.status };
+  });
+  const monthlySettlements = Array.isArray(source.monthlySettlements)
+    ? source.monthlySettlements.flatMap((item, index) => { const settlement = cleanMonthlySettlement(item, `${fallbackId}-monthly-${index}`); return settlement ? [settlement] : []; })
+    : [];
+  const legacySettlement = cleanMonthlySettlement(source.monthlySettlement, `${fallbackId}-monthly-legacy`);
+  if (legacySettlement && !monthlySettlements.some((settlement) => settlement.month === legacySettlement.month)) monthlySettlements.push(legacySettlement);
+  const settlementIncomeTasks = monthlySettlements.filter((settlement) => !tasks.some((task) => task.id === `monthly-income-${settlement.id}`)).map((settlement) => ({
+    id: `monthly-income-${settlement.id}`,
+    moduleId: 'Finance' as ModuleId,
+    title: `${settlement.month} 短影音月結（舊資料）`,
+    status: settlement.status === 'paid' ? '已收款' : settlement.status === 'invoiced' ? '已請款' : '待請款',
+    amount: settlement.deliveredCount * settlement.unitPrice,
+    isPaid: settlement.status === 'paid',
+    transactionType: 'income' as const,
+    transactionDate: `${settlement.month}-01`,
+    paidAt: settlement.paidAt,
+    description: settlement.notes,
+    updatedAt: `${settlement.month}-01T00:00:00.000Z`,
+  }));
+
   return {
     id: fallbackId || (typeof source.id === 'string' ? source.id : ''),
     name: name ?? '未命名影視專案',
-    projectType: Object.hasOwn(PROJECT_TYPE_TEMPLATES, source.projectType as string) ? source.projectType as ProjectType : 'general',
+    projectType,
     isFlatRate: source.isFlatRate === true || source.projectType === 'shortVideoEditing',
-    monthlySettlement: isRecord(source.monthlySettlement) ? {
-      month: typeof source.monthlySettlement.month === 'string' ? source.monthlySettlement.month : new Date().toISOString().slice(0, 7),
-      deliveredCount: typeof source.monthlySettlement.deliveredCount === 'number' ? Math.max(0, source.monthlySettlement.deliveredCount) : 0,
-      unitPrice: typeof source.monthlySettlement.unitPrice === 'number' ? Math.max(0, source.monthlySettlement.unitPrice) : 0,
-      status: source.monthlySettlement.status === 'invoiced' || source.monthlySettlement.status === 'paid' ? source.monthlySettlement.status : 'pending',
-    } : source.projectType === 'shortVideoEditing' ? { month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending' } : undefined,
     budgetByCategory: cleanBudgetByCategory(source.budgetByCategory),
-    tasks,
-    moduleConfigs: cleanModuleConfigs(source.moduleConfigs),
+    tasks: [...consolidatedTasks, ...settlementIncomeTasks],
+    monthlySettlements: [],
+    moduleConfigs,
   };
 }

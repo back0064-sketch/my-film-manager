@@ -21,8 +21,10 @@ export async function listProjects(): Promise<ProjectListItem[]> {
   return ((data ?? []) as (FilmProjectRow & { client_id: string | null; clients: { name: string }[] | null })[]).map(({ id, name, client_id, clients, updated_at, project_data }) => {
     const project = cleanProjectData(project_data, id);
     const financeTasks = project?.tasks.filter((task) => task.moduleId === 'Finance') ?? [];
-    const outstandingAmount = financeTasks.filter((task) => !task.isPaid).reduce((sum, task) => sum + task.amount, 0);
-    return { id, name, clientId: client_id, clientName: clients?.[0]?.name ?? null, updated_at, taskCount: project?.tasks.length ?? 0, outstandingAmount };
+    const outstandingPayable = financeTasks.filter((task) => task.transactionType !== 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0);
+    const outstandingReceivable = financeTasks.filter((task) => task.transactionType === 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0)
+      + (project?.monthlySettlements ?? []).filter((settlement) => settlement.status !== 'paid').reduce((sum, settlement) => sum + settlement.deliveredCount * settlement.unitPrice, 0);
+    return { id, name, clientId: client_id, clientName: clients?.[0]?.name ?? null, updated_at, taskCount: project?.tasks.length ?? 0, outstandingAmount: outstandingPayable, outstandingReceivable, outstandingPayable };
   });
 }
 

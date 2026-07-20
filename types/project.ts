@@ -5,6 +5,8 @@ export const MODULES = [
   { id: 'Finance', name: '💰 財務帳目' },
 ] as const;
 
+export const WORKSPACE_MODULES = [MODULES[0], MODULES[3]] as const;
+
 export type ModuleId = (typeof MODULES)[number]['id'];
 
 export const PROJECT_TYPES = [
@@ -17,6 +19,7 @@ export const PROJECT_TYPES = [
 export type ProjectType = (typeof PROJECT_TYPES)[number]['id'];
 export const EXPENSE_CATEGORIES = ['Scripting', 'OnSite', 'PostProduction'] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export type TransactionType = 'income' | 'expense';
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   Scripting: '腳本',
   OnSite: '拍攝',
@@ -37,6 +40,13 @@ export interface Task {
   assignee?: string;
   dueDate?: string;
   expenseCategory?: ExpenseCategory;
+  transactionType?: TransactionType;
+  counterparty?: string;
+  invoiceNumber?: string;
+  paymentMethod?: string;
+  receiptUrl?: string;
+  transactionDate?: string;
+  readyForCollection?: boolean;
   amount: number;
   isPaid: boolean;
   linkedTaskId?: string;
@@ -48,10 +58,14 @@ export interface Task {
 export type MonthlySettlementStatus = 'pending' | 'invoiced' | 'paid';
 
 export interface MonthlySettlement {
+  id: string;
   month: string;
   deliveredCount: number;
   unitPrice: number;
   status: MonthlySettlementStatus;
+  invoiceDate?: string;
+  paidAt?: string;
+  notes?: string;
 }
 
 export interface ProjectData {
@@ -59,6 +73,8 @@ export interface ProjectData {
   name: string;
   projectType: ProjectType;
   isFlatRate: boolean;
+  monthlySettlements: MonthlySettlement[];
+  /** Kept only to migrate projects saved before monthly settlement history was added. */
   monthlySettlement?: MonthlySettlement;
   budgetByCategory: Record<ExpenseCategory, number>;
   tasks: Task[];
@@ -73,6 +89,8 @@ export interface ProjectListItem {
   updated_at: string;
   taskCount: number;
   outstandingAmount: number;
+  outstandingReceivable: number;
+  outstandingPayable: number;
 }
 
 export interface Client {

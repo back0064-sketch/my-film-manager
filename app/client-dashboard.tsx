@@ -9,7 +9,9 @@ const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 
 function projectListItem(project: ReturnType<typeof createProjectData>, updatedAt = new Date().toISOString()): ProjectListItem {
   const financeTasks = project.tasks.filter((task) => task.moduleId === 'Finance');
-  return { id: project.id, name: project.name, clientId: null, clientName: null, updated_at: updatedAt, taskCount: project.tasks.length, outstandingAmount: financeTasks.filter((task) => !task.isPaid).reduce((sum, task) => sum + task.amount, 0) };
+  const outstandingPayable = financeTasks.filter((task) => task.transactionType !== 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0);
+  const outstandingReceivable = financeTasks.filter((task) => task.transactionType === 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0) + project.monthlySettlements.filter((settlement) => settlement.status !== 'paid').reduce((sum, settlement) => sum + settlement.deliveredCount * settlement.unitPrice, 0);
+  return { id: project.id, name: project.name, clientId: null, clientName: null, updated_at: updatedAt, taskCount: project.tasks.length, outstandingAmount: outstandingPayable, outstandingReceivable, outstandingPayable };
 }
 
 function formatUpdatedAt(value: string) {

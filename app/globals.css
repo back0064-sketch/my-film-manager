@@ -22,3 +22,15 @@ body {
   color: var(--foreground);
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, Helvetica, sans-serif;
 }
+
+/* 成本控制改由「財務帳目」獨立開啟，避免干擾一般專案看板。 */
+.project-board > div > section:nth-of-type(2),
+.project-board > div > div:nth-of-type(1) {
+  display: none;
+}
+
+/* 財務收支明細不再顯示「對象」欄位；舊資料仍保留供相容讀取。 */
+.min-w-\[1000px\] th:nth-child(2),
+.min-w-\[1000px\] td:nth-child(2) {
+  display: none;
+}

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { projectApi } from '@/lib/client/project-api';
-import { cleanProjectData, createProjectData } from '@/lib/project-data';
+import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
-import { ExpenseCategory, ModuleId, MonthlySettlement, ProjectData, Task } from '@/types/project';
+import { ExpenseCategory, ModuleId, MonthlySettlement, ProjectData, ProjectType, Task, TransactionType } from '@/types/project';
 
 export type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -97,12 +97,24 @@ export function useProjectData(projectId: string) {
     }));
   };
 
-  const updateMonthlySettlement = (updates: Partial<MonthlySettlement>) => {
-    updateProject((current) => ({ ...current, monthlySettlement: { month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending', ...current.monthlySettlement, ...updates } }));
+  const addMonthlySettlement = () => {
+    updateProject((current) => ({ ...current, monthlySettlements: [...current.monthlySettlements, { id: crypto.randomUUID(), month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending' }] }));
   };
 
-  const addTask = (title: string, moduleId: ModuleId, status: string) => {
-    updateProject((current) => addTaskToProject(current, title, moduleId, status));
+  const updateMonthlySettlement = (id: string, updates: Partial<MonthlySettlement>) => {
+    updateProject((current) => ({ ...current, monthlySettlements: current.monthlySettlements.map((settlement) => settlement.id === id ? { ...settlement, ...updates } : settlement) }));
+  };
+
+  const deleteMonthlySettlement = (id: string) => {
+    updateProject((current) => ({ ...current, monthlySettlements: current.monthlySettlements.filter((settlement) => settlement.id !== id) }));
+  };
+
+  const updateProjectTemplate = (projectType: ProjectType) => {
+    updateProject((current) => switchProjectTemplate(current, projectType));
+  };
+
+  const addTask = (title: string, moduleId: ModuleId, status: string, transactionType?: TransactionType, transactionAmount?: number, linkedIncomeAmount?: number) => {
+    updateProject((current) => addTaskToProject(current, title, moduleId, status, transactionType, transactionAmount, linkedIncomeAmount));
   };
 
   const deleteTask = (taskId: string) => {
@@ -113,5 +125,5 @@ export function useProjectData(projectId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, updateMonthlySettlement, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
 }
