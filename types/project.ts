@@ -1,11 +1,20 @@
 export const MODULES = [
-  { id: 'Scripting', name: '✍️ 腳本階段' },
-  { id: 'OnSite', name: '🎥 拍攝現場' },
-  { id: 'PostProduction', name: '✂️ 後期剪輯' },
+  { id: 'Scripting', name: '🎬 專案主流程' },
+  { id: 'OnSite', name: '🎥 拍攝／執行' },
+  { id: 'PostProduction', name: '✂️ 後期／交付' },
   { id: 'Finance', name: '💰 財務帳目' },
 ] as const;
 
 export type ModuleId = (typeof MODULES)[number]['id'];
+
+export const PROJECT_TYPES = [
+  { id: 'general', name: '一般製片', description: '使用標準製片流程' },
+  { id: 'shortVideoEditing', name: '短影音剪輯', description: '大量、純剪輯、月結案件' },
+  { id: 'longVideoEditing', name: '長影音剪輯', description: '剪輯進度與修改審帶' },
+  { id: 'programPlanning', name: '節目企劃', description: '田調、場勘、腳本、拍攝與 RD' },
+  { id: 'director', name: '導演', description: '腳本、分鏡與播出結款' },
+] as const;
+export type ProjectType = (typeof PROJECT_TYPES)[number]['id'];
 export const EXPENSE_CATEGORIES = ['Scripting', 'OnSite', 'PostProduction'] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -36,10 +45,21 @@ export interface Task {
   updatedAt: string;
 }
 
+export type MonthlySettlementStatus = 'pending' | 'invoiced' | 'paid';
+
+export interface MonthlySettlement {
+  month: string;
+  deliveredCount: number;
+  unitPrice: number;
+  status: MonthlySettlementStatus;
+}
+
 export interface ProjectData {
   id: string;
   name: string;
+  projectType: ProjectType;
   isFlatRate: boolean;
+  monthlySettlement?: MonthlySettlement;
   budgetByCategory: Record<ExpenseCategory, number>;
   tasks: Task[];
   moduleConfigs: ModuleConfig[];

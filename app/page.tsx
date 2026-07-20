@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ClientDashboard } from '@/app/client-dashboard';
+import { ProjectFinancePanel } from '@/app/project-finance-panel';
 import { useProjectData } from '@/hooks/useProjectData';
 import { projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
@@ -173,13 +174,14 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
 }
 
 function ProjectBoard({ projectId, onBack }: { projectId: string; onBack: () => void }) {
-  const { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, addTask, deleteTask, updateTask } = useProjectData(projectId);
+  const { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, updateMonthlySettlement, addTask, deleteTask, updateTask } = useProjectData(projectId);
   const [activeModule, setActiveModule] = useState<ModuleId>('Scripting');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [addingStatus, setAddingStatus] = useState<string | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   if (loading || !project) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">專案載入中…</main>;
+  if (activeModule === ('Finance' as ModuleId)) return <ProjectFinancePanel project={project} updateBudget={updateBudget} updateMonthlySettlement={updateMonthlySettlement} updateTask={updateTask} addTask={addTask} onBackToTasks={() => setActiveModule('Scripting')} />;
 
   const financeTasks = project.tasks.filter((task) => task.moduleId === 'Finance');
   const actualSpend = financeTasks.filter((task) => task.isPaid).reduce((sum, task) => sum + task.amount, 0);

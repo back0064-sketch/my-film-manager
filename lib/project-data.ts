@@ -1,4 +1,4 @@
-import { ExpenseCategory, EXPENSE_CATEGORIES, ModuleConfig, ModuleId, ProjectData, Task } from '@/types/project';
+import { ExpenseCategory, EXPENSE_CATEGORIES, ModuleConfig, ModuleId, ProjectData, ProjectType, Task } from '@/types/project';
 
 export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
   { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
@@ -6,6 +6,21 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
   { moduleId: 'PostProduction', customStatuses: ['✂️ 初剪中', '🎨 調色/特效', '🎉 完稿審核'] },
   { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] },
 ];
+
+const productionConfigs = (scripting: string[], onSite: string[], postProduction: string[]): ModuleConfig[] => [
+  { moduleId: 'Scripting', customStatuses: scripting },
+  { moduleId: 'OnSite', customStatuses: onSite },
+  { moduleId: 'PostProduction', customStatuses: postProduction },
+  { moduleId: 'Finance', customStatuses: ['📝 待請款', '⏳ 審核中', '💰 已入帳'] },
+];
+
+export const PROJECT_TYPE_TEMPLATES: Record<ProjectType, ModuleConfig[]> = {
+  general: DEFAULT_MODULE_CONFIGS,
+  shortVideoEditing: productionConfigs(['待收素材', '剪輯中', '待確認', '修改中', '已交付'], DEFAULT_MODULE_CONFIGS[1].customStatuses, DEFAULT_MODULE_CONFIGS[2].customStatuses),
+  longVideoEditing: productionConfigs(['素材整理', '粗剪中', '初剪審帶', '客戶修改', '定稿交付'], DEFAULT_MODULE_CONFIGS[1].customStatuses, DEFAULT_MODULE_CONFIGS[2].customStatuses),
+  programPlanning: productionConfigs(['田調中', '場勘完成', '腳本撰寫', '製作準備', 'RD', '拍攝執行', '結案交付'], DEFAULT_MODULE_CONFIGS[1].customStatuses, DEFAULT_MODULE_CONFIGS[2].customStatuses),
+  director: productionConfigs(['腳本開發', '分鏡確認', '現場拍攝', '後期確認', '已播出', '結案'], DEFAULT_MODULE_CONFIGS[1].customStatuses, DEFAULT_MODULE_CONFIGS[2].customStatuses),
+};
 
 const moduleIds = new Set<ModuleId>(['Scripting', 'OnSite', 'PostProduction', 'Finance']);
 const expenseCategories = new Set<ExpenseCategory>(EXPENSE_CATEGORIES);
@@ -58,8 +73,9 @@ function cleanModuleConfigs(value: unknown): ModuleConfig[] {
   return configs.length ? configs : DEFAULT_MODULE_CONFIGS;
 }
 
-export function createProjectData(id: string, name = '未命名影視專案'): ProjectData {
-  return { id, name, isFlatRate: false, budgetByCategory: emptyBudgetByCategory(), tasks: [], moduleConfigs: DEFAULT_MODULE_CONFIGS };
+export function createProjectData(id: string, name = '未命名影視專案', projectType: ProjectType = 'general'): ProjectData {
+  const isFlatRate = projectType === 'shortVideoEditing';
+  return { id, name, projectType, isFlatRate, monthlySettlement: isFlatRate ? { month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending' } : undefined, budgetByCategory: emptyBudgetByCategory(), tasks: [], moduleConfigs: PROJECT_TYPE_TEMPLATES[projectType] };
 }
 
 export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData | null {
@@ -75,7 +91,14 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
   return {
     id: fallbackId || (typeof source.id === 'string' ? source.id : ''),
     name: name ?? '未命名影視專案',
-    isFlatRate: source.isFlatRate === true,
+    projectType: Object.hasOwn(PROJECT_TYPE_TEMPLATES, source.projectType as string) ? source.projectType as ProjectType : 'general',
+    isFlatRate: source.isFlatRate === true || source.projectType === 'shortVideoEditing',
+    monthlySettlement: isRecord(source.monthlySettlement) ? {
+      month: typeof source.monthlySettlement.month === 'string' ? source.monthlySettlement.month : new Date().toISOString().slice(0, 7),
+      deliveredCount: typeof source.monthlySettlement.deliveredCount === 'number' ? Math.max(0, source.monthlySettlement.deliveredCount) : 0,
+      unitPrice: typeof source.monthlySettlement.unitPrice === 'number' ? Math.max(0, source.monthlySettlement.unitPrice) : 0,
+      status: source.monthlySettlement.status === 'invoiced' || source.monthlySettlement.status === 'paid' ? source.monthlySettlement.status : 'pending',
+    } : source.projectType === 'shortVideoEditing' ? { month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending' } : undefined,
     budgetByCategory: cleanBudgetByCategory(source.budgetByCategory),
     tasks,
     moduleConfigs: cleanModuleConfigs(source.moduleConfigs),

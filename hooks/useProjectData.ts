@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
-import { ExpenseCategory, ModuleId, ProjectData, Task } from '@/types/project';
+import { ExpenseCategory, ModuleId, MonthlySettlement, ProjectData, Task } from '@/types/project';
 
 export type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -97,6 +97,10 @@ export function useProjectData(projectId: string) {
     }));
   };
 
+  const updateMonthlySettlement = (updates: Partial<MonthlySettlement>) => {
+    updateProject((current) => ({ ...current, monthlySettlement: { month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending', ...current.monthlySettlement, ...updates } }));
+  };
+
   const addTask = (title: string, moduleId: ModuleId, status: string) => {
     updateProject((current) => addTaskToProject(current, title, moduleId, status));
   };
@@ -109,5 +113,5 @@ export function useProjectData(projectId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, updateMonthlySettlement, addTask, deleteTask, updateTask };
 }
