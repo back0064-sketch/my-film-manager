@@ -34,3 +34,88 @@ body {
 .min-w-\[1000px\] td:nth-child(2) {
   display: none;
 }
+
+/* 專案大廳僅顯示進度；收支金額集中於財務帳目。 */
+.client-dashboard article > div > p.mt-3 {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  /* 手機以滑動保留看板欄位完整寬度，避免多階段流程被壓成難讀的小卡。 */
+  .project-board > div > header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .project-board > div > header > div {
+    min-width: 0;
+    flex: 1 1 12rem;
+  }
+
+  .project-board > div > header > div > div:first-child {
+    flex-wrap: wrap;
+  }
+
+  .project-board > div > header h1 {
+    overflow-wrap: anywhere;
+    font-size: 1.25rem;
+  }
+
+  .project-board > div > div:nth-of-type(2) > nav {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.5rem;
+    scrollbar-width: none;
+  }
+
+  .project-board > div > div:nth-of-type(2) > nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .project-board > div > div:nth-of-type(2) > nav button {
+    flex: 0 0 auto;
+    margin: 0;
+    min-width: 8rem;
+    text-align: center;
+  }
+
+  .project-board > div > div:nth-of-type(2) > section > div:nth-of-type(2) {
+    grid-auto-columns: minmax(82vw, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 0.75rem;
+    scroll-snap-type: x mandatory;
+    scrollbar-color: #475569 transparent;
+  }
+
+  .project-board > div > div:nth-of-type(2) > section > div:nth-of-type(2) > section {
+    min-height: 420px;
+    scroll-snap-align: start;
+  }
+
+  .project-board .group button[aria-label^="刪除任務"] {
+    opacity: 1;
+  }
+
+  /* iOS 需要 16px 以上輸入字級，否則聚焦時會自動放大頁面。 */
+  main.flex.min-h-screen.items-center.justify-center input {
+    font-size: 16px;
+  }
+
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+
+  .finance-panel input[type="date"],
+  .finance-panel input[type="month"] {
+    min-height: 2.5rem;
+  }
+}
