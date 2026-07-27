@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
-import { ExpenseCategory, ModuleId, MonthlySettlement, ProjectData, ProjectType, Task, TransactionType } from '@/types/project';
+import { ModuleId, MonthlySettlement, ProjectData, ProjectType, Task, TransactionType } from '@/types/project';
 
 export type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -90,11 +90,8 @@ export function useProjectData(projectId: string) {
     return true;
   };
 
-  const updateBudget = (category: ExpenseCategory, amount: number) => {
-    updateProject((current) => ({
-      ...current,
-      budgetByCategory: { ...current.budgetByCategory, [category]: Math.max(0, amount) },
-    }));
+  const updateBudget = (amount: number) => {
+    updateProject((current) => ({ ...current, budgetAmount: Math.max(0, amount) }));
   };
 
   const addMonthlySettlement = () => {
