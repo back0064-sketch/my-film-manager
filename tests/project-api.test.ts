@@ -25,4 +25,16 @@ describe('專案 API 用戶端', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/clients/client-id', expect.objectContaining({ method: 'DELETE' }));
     expect(json).not.toHaveBeenCalled();
   });
+
+  it('合併客戶會傳送來源與目標 ID', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await projectApi.mergeClients('source-id', 'target-id');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/clients/merge', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ sourceId: 'source-id', targetId: 'target-id' }),
+    }));
+  });
 });

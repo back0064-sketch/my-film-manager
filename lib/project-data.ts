@@ -154,6 +154,7 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
   return {
     id: fallbackId || (typeof source.id === 'string' ? source.id : ''),
     name: name ?? '未命名影視專案',
+    syncVersion: typeof source.syncVersion === 'string' ? source.syncVersion : undefined,
     projectType,
     isFlatRate: source.isFlatRate === true || source.projectType === 'shortVideoEditing',
     budgetAmount: cleanBudgetAmount(source),

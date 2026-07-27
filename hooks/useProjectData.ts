@@ -1,25 +1,34 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
 import { ModuleId, MonthlySettlement, ProjectData, ProjectType, Task, TransactionType } from '@/types/project';
 
-export type SyncStatus = 'syncing' | 'synced' | 'error';
+export type SyncStatus = 'syncing' | 'synced' | 'error' | 'conflict';
 
 export function useProjectData(projectId: string) {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('syncing');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const syncVersion = useRef<string | null>(null);
 
   const syncProject = useCallback(async (projectToSync: ProjectData) => {
     setSyncStatus('syncing');
+    setSyncError(null);
     try {
-      await projectApi.save(projectToSync);
+      const saved = await projectApi.save({ ...projectToSync, syncVersion: syncVersion.current ?? undefined });
+      syncVersion.current = saved.syncVersion ?? null;
+      localStorage.setItem(projectToSync.id, JSON.stringify(saved));
       setLastSyncedAt(new Date().toISOString());
       setSyncStatus('synced');
-    } catch {
-      setSyncStatus('error');
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '同步失敗';
+      setSyncError(message);
+      setSyncStatus(message.includes('同步衝突') ? 'conflict' : 'error');
+      return false;
     }
   }, []);
 
@@ -47,6 +56,7 @@ export function useProjectData(projectId: string) {
 
       if (!cancelled) {
         const nextProject = cloudProject ?? localProject ?? createProjectData(projectId);
+        syncVersion.current = nextProject.syncVersion ?? null;
         setProject(nextProject);
         localStorage.setItem(projectId, JSON.stringify(nextProject));
         if (cloudLoaded) {
@@ -81,6 +91,31 @@ export function useProjectData(projectId: string) {
     if (!project) return;
     localStorage.setItem(projectId, JSON.stringify(project));
     await syncProject(project);
+  };
+
+  const resolveConflict = async (choice: 'cloud' | 'local') => {
+    if (!project) return;
+    try {
+      const cloud = await projectApi.get(projectId);
+      if (!cloud) {
+        syncVersion.current = null;
+        await syncProject(project);
+        return;
+      }
+      syncVersion.current = cloud.syncVersion ?? null;
+      if (choice === 'cloud') {
+        setProject(cloud);
+        localStorage.setItem(projectId, JSON.stringify(cloud));
+        setSyncError(null);
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date().toISOString());
+      } else {
+        await syncProject(project);
+      }
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : '衝突處理失敗');
+      setSyncStatus('error');
+    }
   };
 
   const renameProject = (name: string) => {
@@ -122,5 +157,5 @@ export function useProjectData(projectId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, lastSyncedAt, retrySync, renameProject, updateBudget, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, syncError, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
 }

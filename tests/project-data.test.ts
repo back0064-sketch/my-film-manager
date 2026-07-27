@@ -53,6 +53,11 @@ describe('專案資料', () => {
     expect(project?.budgetAmount).toBe(6000);
   });
 
+  it('會保留雲端同步版本供衝突檢查', () => {
+    const project = cleanProjectData({ name: '同步專案', syncVersion: '2026-07-27T00:00:00.000Z' }, 'sync-id');
+    expect(project?.syncVersion).toBe('2026-07-27T00:00:00.000Z');
+  });
+
   it('切換模板會保留任務並把舊板塊任務移到主流程', () => {
     const project = createProjectData('project-id', '測試專案');
     const switched = switchProjectTemplate({ ...project, tasks: [{ id: 'old-task', moduleId: 'OnSite', title: '舊任務', status: '🎬 拍攝中', amount: 0, isPaid: false, updatedAt: '2026-07-21T00:00:00.000Z' }] }, 'longVideoEditing');

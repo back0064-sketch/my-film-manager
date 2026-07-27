@@ -29,11 +29,6 @@ body {
   display: none;
 }
 
-/* 專案大廳僅顯示進度；收支金額集中於財務帳目。 */
-.client-dashboard article > div > p.mt-3 {
-  display: none;
-}
-
 @media (max-width: 767px) {
   body {
     overflow-x: hidden;

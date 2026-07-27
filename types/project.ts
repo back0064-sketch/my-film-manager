@@ -63,6 +63,8 @@ export interface MonthlySettlement {
 export interface ProjectData {
   id: string;
   name: string;
+  /** Cloud row version used for optimistic concurrency control. */
+  syncVersion?: string;
   projectType: ProjectType;
   isFlatRate: boolean;
   monthlySettlements: MonthlySettlement[];
