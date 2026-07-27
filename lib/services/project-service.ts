@@ -51,6 +51,13 @@ export async function addClient(payload: unknown): Promise<Client> {
   return mapClient(data);
 }
 
+export async function deleteClient(id: string) {
+  if (!uuidPattern.test(id)) throw new Error('無效的客戶 ID');
+  const user = await requireUser();
+  const { error } = await repository.removeClient(id, user.id);
+  if (error) throw error;
+}
+
 export async function changeProjectClient(id: string, clientId: string | null) {
   if (!uuidPattern.test(id) || (clientId !== null && !uuidPattern.test(clientId))) throw new Error('無效的資料 ID');
   const user = await requireUser();

@@ -64,21 +64,6 @@ body {
     top: env(safe-area-inset-top);
   }
 
-  .project-status-columns {
-    grid-auto-columns: minmax(82vw, 1fr);
-    grid-auto-flow: column;
-    grid-template-columns: none;
-    overflow-x: auto;
-    padding-bottom: 0.75rem;
-    scroll-snap-type: x mandatory;
-    scrollbar-color: #475569 transparent;
-  }
-
-  .project-status-columns > section {
-    min-height: 420px;
-    scroll-snap-align: start;
-  }
-
   .project-board .group button[aria-label^="刪除任務"] {
     opacity: 1;
   }
