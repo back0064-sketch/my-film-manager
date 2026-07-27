@@ -30,6 +30,11 @@ export async function createClient(client: Pick<Client, 'name' | 'contactName' |
   }).select('id, name, contact_name, contact_email, contact_phone, notes, created_at, updated_at').single();
 }
 
+export async function removeClient(id: string, ownerId: string) {
+  const database = await createServerSupabaseClient();
+  return database.from('clients').delete().eq('id', id).eq('owner_id', ownerId);
+}
+
 export async function findProject(id: string, ownerId: string) {
   const database = await createServerSupabaseClient();
   return database.from('film_projects').select('id, name, updated_at, project_data').eq('id', id).eq('owner_id', ownerId).maybeSingle();

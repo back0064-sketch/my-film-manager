@@ -18,6 +18,7 @@ export const projectApi = {
   assignClient: (id: string, clientId: string | null) => request<void>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ clientId }) }),
   listClients: () => request<Client[]>('/api/clients'),
   createClient: (client: Pick<Client, 'name' | 'contactName' | 'contactEmail' | 'contactPhone' | 'notes'>) => request<Client>('/api/clients', { method: 'POST', body: JSON.stringify(client) }),
+  removeClient: (id: string) => request<void>(`/api/clients/${id}`, { method: 'DELETE' }),
   session: () => request<{ id: string; email?: string } | null>('/api/auth/session'),
   signIn: (email: string, password: string) => request<{ id: string; email?: string }>('/api/auth/sign-in', { method: 'POST', body: JSON.stringify({ email, password }) }),
   signUp: (email: string, password: string) => request<{ needsEmailConfirmation: boolean; email?: string }>('/api/auth/sign-up', { method: 'POST', body: JSON.stringify({ email, password }) }),

@@ -14,4 +14,15 @@ describe('專案 API 用戶端', () => {
 
     expect(json).not.toHaveBeenCalled();
   });
+
+  it('刪除客戶收到 204 回應時不會嘗試解析 JSON', async () => {
+    const json = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(projectApi.removeClient('client-id')).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/clients/client-id', expect.objectContaining({ method: 'DELETE' }));
+    expect(json).not.toHaveBeenCalled();
+  });
 });
