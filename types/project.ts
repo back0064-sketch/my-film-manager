@@ -17,14 +17,7 @@ export const PROJECT_TYPES = [
   { id: 'director', name: '導演', description: '腳本、分鏡與播出結款' },
 ] as const;
 export type ProjectType = (typeof PROJECT_TYPES)[number]['id'];
-export const EXPENSE_CATEGORIES = ['Scripting', 'OnSite', 'PostProduction'] as const;
-export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 export type TransactionType = 'income' | 'expense';
-export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
-  Scripting: '腳本',
-  OnSite: '拍攝',
-  PostProduction: '後期',
-};
 
 export interface ModuleConfig {
   moduleId: ModuleId;
@@ -39,7 +32,6 @@ export interface Task {
   description?: string;
   assignee?: string;
   dueDate?: string;
-  expenseCategory?: ExpenseCategory;
   transactionType?: TransactionType;
   counterparty?: string;
   invoiceNumber?: string;
@@ -76,7 +68,7 @@ export interface ProjectData {
   monthlySettlements: MonthlySettlement[];
   /** Kept only to migrate projects saved before monthly settlement history was added. */
   monthlySettlement?: MonthlySettlement;
-  budgetByCategory: Record<ExpenseCategory, number>;
+  budgetAmount: number;
   tasks: Task[];
   moduleConfigs: ModuleConfig[];
 }

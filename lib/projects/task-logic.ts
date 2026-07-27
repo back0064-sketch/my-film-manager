@@ -1,4 +1,4 @@
-import { ExpenseCategory, ModuleId, ProjectData, Task } from '@/types/project';
+import { ModuleId, ProjectData, Task } from '@/types/project';
 
 const financeLabels: Partial<Record<ModuleId, string>> = {
   Scripting: '製作費',
@@ -12,12 +12,22 @@ export function addTaskToProject(project: ProjectData, title: string, moduleId: 
   const taskId = createTaskId();
   const task: Task = { id: taskId, moduleId, title, status, amount: 0, isPaid: false, updatedAt: new Date().toISOString() };
   const label = financeLabels[moduleId];
-  if (!label) return { ...project, tasks: [...project.tasks, task] };
+  if (!label) {
+    if (moduleId !== 'Finance') return { ...project, tasks: [...project.tasks, task] };
+    const type = transactionType ?? 'expense';
+    const financeTask: Task = {
+      ...task,
+      transactionType: type,
+      amount: Math.max(0, transactionAmount ?? 0),
+      transactionDate: type === 'income' ? new Date().toISOString().slice(0, 10) : undefined,
+    };
+    return { ...project, tasks: [...project.tasks, financeTask] };
+  }
 
   if (project.isFlatRate && transactionAmount === undefined) return { ...project, tasks: [...project.tasks, task] };
 
   const financeStatus = project.moduleConfigs.find((config) => config.moduleId === 'Finance')?.customStatuses[0] ?? '📝 待請款';
-  const createFinanceTask = (type: 'income' | 'expense', amount: number, suffix: string): Task => ({ id: createTaskId(), moduleId: 'Finance', title: `${title} (${suffix})`, status: financeStatus, amount: Math.max(0, amount), isPaid: false, transactionType: type, transactionDate: type === 'income' ? new Date().toISOString().slice(0, 10) : undefined, linkedTaskId: taskId, expenseCategory: type === 'expense' ? moduleId as ExpenseCategory : undefined, updatedAt: new Date().toISOString() });
+  const createFinanceTask = (type: 'income' | 'expense', amount: number, suffix: string): Task => ({ id: createTaskId(), moduleId: 'Finance', title: `${title} (${suffix})`, status: financeStatus, amount: Math.max(0, amount), isPaid: false, transactionType: type, transactionDate: type === 'income' ? new Date().toISOString().slice(0, 10) : undefined, linkedTaskId: taskId, updatedAt: new Date().toISOString() });
   if (project.isFlatRate) {
     const income = createFinanceTask('income', transactionAmount ?? 0, '影片收入');
     task.linkedTaskId = income.id;
@@ -30,10 +40,17 @@ export function addTaskToProject(project: ProjectData, title: string, moduleId: 
 }
 
 export function deleteTaskFromProject(project: ProjectData, taskId: string): ProjectData {
-  const linkedIds = new Set(project.tasks.filter((task) => task.linkedTaskId === taskId).map((task) => task.id));
   const task = project.tasks.find((item) => item.id === taskId);
-  if (task?.linkedTaskId) linkedIds.add(task.linkedTaskId);
-  return { ...project, tasks: project.tasks.filter((item) => item.id !== taskId && !linkedIds.has(item.id)) };
+  if (!task) return project;
+  if (task.moduleId === 'Finance') {
+    return { ...project, tasks: project.tasks.filter((item) => item.id !== taskId) };
+  }
+  const linkedFinanceIds = new Set(
+    project.tasks
+      .filter((item) => item.moduleId === 'Finance' && (item.linkedTaskId === taskId || item.id === task.linkedTaskId))
+      .map((item) => item.id),
+  );
+  return { ...project, tasks: project.tasks.filter((item) => item.id !== taskId && !linkedFinanceIds.has(item.id)) };
 }
 
 export function updateTaskInProject(project: ProjectData, taskId: string, updates: Partial<Task>): ProjectData {

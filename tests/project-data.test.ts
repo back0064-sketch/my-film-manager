@@ -44,6 +44,15 @@ describe('專案資料', () => {
     expect(project?.tasks.find((task) => task.transactionType === 'income')).toMatchObject({ amount: 9600, transactionDate: '2026-07-01', title: '2026-07 短影音月結（舊資料）' });
   });
 
+  it('會將舊版分類預算加總為專案總預算', () => {
+    const project = cleanProjectData({
+      name: '舊預算專案',
+      budgetByCategory: { Scripting: 1000, OnSite: 2000, PostProduction: 3000 },
+    }, 'legacy-budget-id');
+
+    expect(project?.budgetAmount).toBe(6000);
+  });
+
   it('切換模板會保留任務並把舊板塊任務移到主流程', () => {
     const project = createProjectData('project-id', '測試專案');
     const switched = switchProjectTemplate({ ...project, tasks: [{ id: 'old-task', moduleId: 'OnSite', title: '舊任務', status: '🎬 拍攝中', amount: 0, isPaid: false, updatedAt: '2026-07-21T00:00:00.000Z' }] }, 'longVideoEditing');

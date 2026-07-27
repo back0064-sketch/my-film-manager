@@ -1,4 +1,4 @@
-import { ExpenseCategory, EXPENSE_CATEGORIES, ModuleConfig, ModuleId, MonthlySettlement, ProjectData, ProjectType, Task } from '@/types/project';
+import { ModuleConfig, ModuleId, MonthlySettlement, ProjectData, ProjectType, Task } from '@/types/project';
 
 export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
   { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
@@ -23,11 +23,6 @@ export const PROJECT_TYPE_TEMPLATES: Record<ProjectType, ModuleConfig[]> = {
 };
 
 const moduleIds = new Set<ModuleId>(['Scripting', 'OnSite', 'PostProduction', 'Finance']);
-const expenseCategories = new Set<ExpenseCategory>(EXPENSE_CATEGORIES);
-
-function emptyBudgetByCategory(): Record<ExpenseCategory, number> {
-  return { Scripting: 0, OnSite: 0, PostProduction: 0 };
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -44,7 +39,6 @@ function cleanTask(value: unknown): Task | null {
     description: typeof value.description === 'string' ? value.description : undefined,
     assignee: typeof value.assignee === 'string' ? value.assignee : undefined,
     dueDate: typeof value.dueDate === 'string' ? value.dueDate : undefined,
-    expenseCategory: expenseCategories.has(value.expenseCategory as ExpenseCategory) ? value.expenseCategory as ExpenseCategory : undefined,
     transactionType: value.transactionType === 'income' ? 'income' : value.moduleId === 'Finance' ? 'expense' : undefined,
     counterparty: typeof value.counterparty === 'string' ? value.counterparty : undefined,
     invoiceNumber: typeof value.invoiceNumber === 'string' ? value.invoiceNumber : undefined,
@@ -77,13 +71,14 @@ function cleanMonthlySettlement(value: unknown, fallbackId: string): MonthlySett
   };
 }
 
-function cleanBudgetByCategory(value: unknown): Record<ExpenseCategory, number> {
-  const budget = emptyBudgetByCategory();
-  if (!isRecord(value)) return budget;
-  EXPENSE_CATEGORIES.forEach((category) => {
-    if (typeof value[category] === 'number' && Number.isFinite(value[category])) budget[category] = Math.max(0, value[category]);
-  });
-  return budget;
+function cleanBudgetAmount(source: Record<string, unknown>): number {
+  if (typeof source.budgetAmount === 'number' && Number.isFinite(source.budgetAmount)) return Math.max(0, source.budgetAmount);
+  const legacyBudget = source.budgetByCategory;
+  if (!isRecord(legacyBudget)) return 0;
+  return ['Scripting', 'OnSite', 'PostProduction'].reduce((sum, category) => {
+    const amount = legacyBudget[category];
+    return sum + (typeof amount === 'number' && Number.isFinite(amount) ? Math.max(0, amount) : 0);
+  }, 0);
 }
 
 function cleanModuleConfigs(value: unknown): ModuleConfig[] {
@@ -98,7 +93,7 @@ function cleanModuleConfigs(value: unknown): ModuleConfig[] {
 
 export function createProjectData(id: string, name = '未命名影視專案', projectType: ProjectType = 'general'): ProjectData {
   const isFlatRate = projectType === 'shortVideoEditing';
-  return { id, name, projectType, isFlatRate, monthlySettlements: [], budgetByCategory: emptyBudgetByCategory(), tasks: [], moduleConfigs: PROJECT_TYPE_TEMPLATES[projectType] };
+  return { id, name, projectType, isFlatRate, monthlySettlements: [], budgetAmount: 0, tasks: [], moduleConfigs: PROJECT_TYPE_TEMPLATES[projectType] };
 }
 
 export function switchProjectTemplate(project: ProjectData, projectType: ProjectType): ProjectData {
@@ -161,7 +156,7 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
     name: name ?? '未命名影視專案',
     projectType,
     isFlatRate: source.isFlatRate === true || source.projectType === 'shortVideoEditing',
-    budgetByCategory: cleanBudgetByCategory(source.budgetByCategory),
+    budgetAmount: cleanBudgetAmount(source),
     tasks: [...consolidatedTasks, ...settlementIncomeTasks],
     monthlySettlements: [],
     moduleConfigs,
