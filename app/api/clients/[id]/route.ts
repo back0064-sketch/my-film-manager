@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { apiError } from '@/lib/middlewares/api-handler';
+import { apiError, readJson } from '@/lib/middlewares/api-handler';
 import { deleteClient, updateClient } from '@/lib/services/project-service';
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: Context) {
   try {
-    return NextResponse.json(await updateClient((await params).id, await request.json()));
+    return NextResponse.json(await updateClient((await params).id, await readJson(request, 32_000)));
   } catch (error) {
     return apiError(error);
   }

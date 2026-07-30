@@ -52,6 +52,14 @@ export async function moveClientProjects(sourceClientId: string, targetClientId:
   return database.from('film_projects').update({ client_id: targetClientId, updated_at: new Date().toISOString() }).eq('client_id', sourceClientId).eq('owner_id', ownerId);
 }
 
+export async function mergeClientsAtomically(sourceClientId: string, targetClientId: string) {
+  const database = await createServerSupabaseClient();
+  return database.rpc('merge_owned_clients', {
+    source_client_id: sourceClientId,
+    target_client_id: targetClientId,
+  });
+}
+
 export async function findProject(id: string, ownerId: string) {
   const database = await createServerSupabaseClient();
   return database.from('film_projects').select('id, name, updated_at, project_data').eq('id', id).eq('owner_id', ownerId).maybeSingle();

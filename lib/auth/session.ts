@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { User } from '@supabase/supabase-js';
+import { PublicApiError } from '@/lib/middlewares/api-handler';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -11,6 +12,6 @@ export async function getCurrentUser(): Promise<User | null> {
 
 export async function requireUser(): Promise<User> {
   const user = await getCurrentUser();
-  if (!user) throw new Error('請先登入');
+  if (!user) throw new PublicApiError('請先登入', 401);
   return user;
 }

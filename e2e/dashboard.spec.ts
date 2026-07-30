@@ -14,6 +14,9 @@ const project = {
   tasks: [
     { id: 'task-1', moduleId: 'Scripting', title: '第一支影片', status: '待收素材', amount: 0, isPaid: false, updatedAt: now },
     { id: 'task-2', moduleId: 'Scripting', title: '修改影片', status: '修改中', amount: 0, isPaid: false, updatedAt: now },
+    { id: 'income-1', moduleId: 'Finance', title: '七月收入', status: '💰 已入帳', transactionType: 'income', amount: 12000, isPaid: true, paidAt: '2026-07-05T00:00:00.000Z', updatedAt: now },
+    { id: 'expense-1', moduleId: 'Finance', title: '七月支出', status: '💰 已入帳', transactionType: 'expense', amount: 3000, isPaid: true, paidAt: '2026-07-08T00:00:00.000Z', updatedAt: now },
+    { id: 'receivable-1', moduleId: 'Finance', title: '六月未收', status: '📝 待請款', transactionType: 'income', transactionDate: '2026-06-20', amount: 5000, isPaid: false, updatedAt: now },
   ],
   moduleConfigs: [
     { moduleId: 'Scripting', customStatuses: ['待收素材', '剪輯中', '待確認', '修改中', '已交付'] },
@@ -92,4 +95,18 @@ test('大廳財務金額預設隱藏並可手動顯示', async ({ page }) => {
   await financeSummary.getByRole('button', { name: '顯示金額' }).click();
   await expect(financeSummary.getByText('NT$ 123,456')).toBeVisible();
   await expect(page.getByText('待收 NT$ 123,456 · 待付 NT$ 7,890')).toBeVisible();
+});
+
+test('財務頁可依實際收付月份顯示月報', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+  await page.getByText(project.name).click();
+  await page.getByRole('button', { name: '💰 財務帳目' }).click();
+  await page.getByLabel('報表月份').fill('2026-07');
+
+  const report = page.getByRole('region', { name: '月份財務報表' });
+  await expect(report.getByText('NT$ 12,000', { exact: true })).toBeVisible();
+  await expect(report.getByText('NT$ 3,000', { exact: true })).toBeVisible();
+  await expect(report.getByText('+NT$ 9,000', { exact: true })).toBeVisible();
+  await expect(report.getByText('六月未收')).toBeVisible();
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { MonthlyFinanceReport } from '@/app/monthly-finance-report';
 import { MonthlySettlement, ProjectData, Task, TransactionType } from '@/types/project';
 
 type Props = {
@@ -27,10 +28,6 @@ export function ProjectFinancePanel({ project, updateBudget, updateTask, deleteT
   const income = transactions.filter((task) => task.transactionType === 'income');
   const expenses = transactions.filter((task) => task.transactionType !== 'income');
   const isShortVideo = project.projectType === 'shortVideoEditing';
-  const receivable = income.filter((task) => !task.isPaid).reduce((sum, task) => sum + task.amount, 0);
-  const payable = expenses.filter((task) => !task.isPaid).reduce((sum, task) => sum + task.amount, 0);
-  const received = income.filter((task) => task.isPaid).reduce((sum, task) => sum + task.amount, 0);
-  const paid = expenses.filter((task) => task.isPaid).reduce((sum, task) => sum + task.amount, 0);
   const status = project.moduleConfigs.find((config) => config.moduleId === 'Finance')?.customStatuses[0] ?? '待處理';
   const monthlyGroups = [...income.reduce((groups, task) => {
     const month = (task.transactionDate ?? task.updatedAt).slice(0, 7);
@@ -66,7 +63,7 @@ export function ProjectFinancePanel({ project, updateBudget, updateTask, deleteT
 
   return <main className="finance-panel min-h-screen bg-slate-950 p-4 pb-24 text-slate-100 md:p-8 md:pb-8"><div className="mx-auto max-w-7xl">
     <header className="mb-6 flex flex-wrap items-center gap-3 border-b border-slate-800 pb-6"><button onClick={onBackToTasks} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs">← 製作任務</button><div className="min-w-0 flex-1"><p className="truncate text-xs text-indigo-400">{project.name}</p><h1 className="text-2xl font-black">💰 財務帳目</h1></div><button onClick={exportCsv} className="rounded-lg border border-slate-700 px-3 py-2 text-xs">匯出 CSV</button></header>
-    <section className="grid grid-cols-2 gap-3 md:grid-cols-4"><Card label="尚未收款" amount={receivable} color="text-amber-300" /><Card label="尚未支付" amount={payable} color="text-rose-300" /><Card label="本期已收" amount={received} color="text-emerald-400" /><Card label="本期已付" amount={paid} color="text-indigo-300" /></section>
+    <MonthlyFinanceReport tasks={transactions} />
     {isShortVideo ? <section className="mt-6 rounded-2xl border border-indigo-800 bg-slate-900/60 p-4 sm:p-5"><h2 className="font-bold">短影音月結（自動彙總）</h2><p className="mt-1 text-xs text-slate-400">由每支影片任務連動的收入項目自動計算。</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead className="border-b border-slate-800 text-xs text-slate-400"><tr><th>月份</th><th>交付支數</th><th>月結金額</th><th>待收</th><th>已收</th></tr></thead><tbody>{monthlyGroups.map((group) => <tr key={group.month} className="border-b border-slate-800/70"><td className="py-3">{group.month}</td><td>{group.count} 支</td><td className="font-bold text-emerald-400">{money(group.total)}</td><td className="text-amber-300">{money(group.pending)}</td><td>{money(group.received)}</td></tr>)}</tbody></table></div></section> : <BudgetPanel project={project} expenses={expenses} updateBudget={updateBudget} />}
     <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold">收支明細</h2><p className="mt-1 text-xs text-slate-400">完成任務的收入會標示「可收款」。</p></div><TransactionButtons add={add} className="hidden md:flex" /></div>
       <div className="mt-4 flex flex-wrap gap-2"><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)} className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs sm:flex-none"><option value="all">全部收支</option><option value="income">收入</option><option value="expense">支出</option></select><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)} className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs sm:flex-none"><option value="all">全部狀態</option><option value="open">待處理</option><option value="paid">已完成</option></select><input type="month" value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs sm:w-auto" /></div>
@@ -77,7 +74,6 @@ export function ProjectFinancePanel({ project, updateBudget, updateTask, deleteT
   </div><div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-700 bg-slate-950/95 p-3 backdrop-blur md:hidden"><TransactionButtons add={add} className="flex" /></div>{pendingDelete && <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm shadow-xl md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2"><span>項目將在 6 秒後刪除</span><button onClick={() => { if (timer.current) window.clearTimeout(timer.current); setPendingDelete(null); }} className="shrink-0 font-bold text-indigo-400">復原</button></div>}</main>;
 }
 
-function Card({ label, amount, color }: { label: string; amount: number; color: string }) { return <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4"><p className="text-xs text-slate-400">{label}</p><p className={`mt-2 text-xl font-black ${color}`}>{money(amount)}</p></section>; }
 function TransactionButtons({ add, className }: { add: (type: TransactionType) => void; className: string }) { return <div className={`${className} w-full gap-2`}><button onClick={() => add('income')} className="flex-1 rounded-lg bg-emerald-700 px-3 py-3 text-xs font-bold md:flex-none">＋ 新增收入</button><button onClick={() => add('expense')} className="flex-1 rounded-lg bg-indigo-600 px-3 py-3 text-xs font-bold md:flex-none">＋ 新增支出</button></div>; }
 function BudgetPanel({ project, expenses, updateBudget }: { project: ProjectData; expenses: Task[]; updateBudget: Props['updateBudget'] }) {
   const actual = expenses.filter((task) => task.isPaid).reduce((sum, task) => sum + task.amount, 0);

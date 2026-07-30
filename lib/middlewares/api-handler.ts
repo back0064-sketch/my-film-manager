@@ -1,15 +1,31 @@
 import { NextResponse } from 'next/server';
 
-export async function readJson(request: Request): Promise<unknown> {
+export class PublicApiError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+    this.name = 'PublicApiError';
+  }
+}
+
+export async function readJson(request: Request, maxBytes = 1_000_000): Promise<unknown> {
+  const declaredLength = Number(request.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new PublicApiError('請求內容過大', 413);
+  }
   try {
-    return await request.json();
-  } catch {
-    throw new Error('請求內容必須是有效 JSON');
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw new PublicApiError('請求內容過大', 413);
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    if (error instanceof PublicApiError) throw error;
+    throw new PublicApiError('請求內容必須是有效 JSON');
   }
 }
 
 export function apiError(error: unknown) {
-  const message = error instanceof Error ? error.message : '伺服器發生未預期錯誤';
-  const status = message.includes('請先登入') ? 401 : message.includes('同步衝突') ? 409 : message.includes('無效') || message.includes('格式') || message.includes('缺少') ? 400 : 500;
-  return NextResponse.json({ error: message }, { status });
+  if (error instanceof PublicApiError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+  console.error('API request failed', error);
+  return NextResponse.json({ error: '伺服器暫時無法處理請求' }, { status: 500 });
 }

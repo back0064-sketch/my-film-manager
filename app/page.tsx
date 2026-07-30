@@ -6,6 +6,7 @@ import { ProjectFinancePanel } from '@/app/project-finance-panel';
 import { ProjectSummary, ProjectWorkspaceNavigation } from '@/app/project-overview';
 import { useProjectData } from '@/hooks/useProjectData';
 import { projectApi } from '@/lib/client/project-api';
+import { clearLocalProjectCache } from '@/lib/client/project-cache';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
 import { ModuleId, PROJECT_TYPES, ProjectListItem, ProjectType, WORKSPACE_MODULES } from '@/types/project';
 
@@ -119,7 +120,7 @@ function LegacyHome() {
     <div className="mx-auto max-w-5xl">
       <header className="mb-10 flex items-start justify-between border-b border-slate-800 pb-7">
         <div><h1 className="text-4xl font-black text-indigo-400">🎬 影視製片控制台</h1><p className="mt-2 text-sm text-slate-400">專案、製作進度與款項管理</p></div>
-        <div className="text-right text-xs text-slate-400"><p>{user?.email}</p><button onClick={() => void projectApi.signOut().finally(() => { setProjects([]); setUser(null); })} className="mt-2 text-rose-400 hover:text-rose-300">登出</button></div>
+        <div className="text-right text-xs text-slate-400"><p>{user?.email}</p><button onClick={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage); setProjects([]); setUser(null); })} className="mt-2 text-rose-400 hover:text-rose-300">登出</button></div>
       </header>
       <div className="mb-8 flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6 sm:flex-row">
         <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void createProject()} placeholder="輸入新的影視專案名稱" className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm" />
@@ -148,7 +149,7 @@ export default function Home() {
   if (sessionLoading) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">登入狀態確認中…</main>;
   if (!user) return <AuthScreen onAuthenticated={setUser} />;
   if (activeProjectId) return <ProjectBoard projectId={activeProjectId} onBack={() => setActiveProjectId(null)} />;
-  return <ClientDashboard userEmail={user.email} onOpenProject={setActiveProjectId} onSignOut={() => void projectApi.signOut().finally(() => setUser(null))} />;
+  return <ClientDashboard userEmail={user.email} onOpenProject={setActiveProjectId} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage); setUser(null); })} />;
 }
 
 // Keeps the prior dashboard implementation available while the client-first view is rolled out.

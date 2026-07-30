@@ -2,16 +2,48 @@ import 'server-only';
 
 import { cleanProjectData } from '@/lib/project-data';
 import { requireUser } from '@/lib/auth/session';
+import { PublicApiError } from '@/lib/middlewares/api-handler';
 import * as repository from '@/lib/repositories/project-repository';
 import { Client, FilmProjectRow, ProjectData, ProjectListItem } from '@/types/project';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ensureProject(id: string, payload: unknown): ProjectData {
-  if (!uuidPattern.test(id)) throw new Error('無效的專案 ID');
+  if (!uuidPattern.test(id)) throw new PublicApiError('無效的專案 ID');
   const project = cleanProjectData(payload, id);
-  if (!project || !project.name.trim()) throw new Error('專案資料格式不正確');
+  if (!project || !project.name.trim()) throw new PublicApiError('專案資料格式不正確');
+  if (project.name.trim().length > 120) throw new PublicApiError('專案名稱不可超過 120 個字元');
+  if (project.tasks.length > 2000) throw new PublicApiError('單一專案最多 2000 項任務');
+  project.tasks.forEach((task) => {
+    if (task.title.length > 200) throw new PublicApiError('任務名稱不可超過 200 個字元');
+    if ((task.description?.length ?? 0) > 5000) throw new PublicApiError('任務說明不可超過 5000 個字元');
+    if ((task.assignee?.length ?? 0) > 100) throw new PublicApiError('負責人不可超過 100 個字元');
+    if ((task.receiptUrl?.length ?? 0) > 2000) throw new PublicApiError('憑證連結或備註不可超過 2000 個字元');
+  });
   return { ...project, id, name: project.name.trim() };
+}
+
+function optionalText(source: Record<string, unknown>, key: string, maxLength: number) {
+  if (source[key] === undefined || source[key] === null || source[key] === '') return undefined;
+  if (typeof source[key] !== 'string') throw new PublicApiError('客戶資料格式不正確');
+  const value = source[key].trim();
+  if (value.length > maxLength) throw new PublicApiError(`${key} 內容過長`);
+  return value || undefined;
+}
+
+function clientInput(payload: unknown) {
+  if (!payload || typeof payload !== 'object') throw new PublicApiError('客戶資料格式不正確');
+  const source = payload as Record<string, unknown>;
+  const name = typeof source.name === 'string' ? source.name.trim() : '';
+  if (!name) throw new PublicApiError('請輸入客戶名稱');
+  if (name.length > 100) throw new PublicApiError('客戶名稱不可超過 100 個字元');
+  return {
+    name,
+    contactName: optionalText(source, 'contactName', 100),
+    contactEmail: optionalText(source, 'contactEmail', 254),
+    contactPhone: optionalText(source, 'contactPhone', 50),
+    notes: optionalText(source, 'notes', 5000),
+  };
 }
 
 export async function listProjects(): Promise<ProjectListItem[]> {
@@ -40,42 +72,42 @@ export async function listClients(): Promise<Client[]> {
 }
 
 export async function addClient(payload: unknown): Promise<Client> {
-  if (!payload || typeof payload !== 'object') throw new Error('客戶資料格式不正確');
-  const source = payload as Record<string, unknown>;
-  const name = typeof source.name === 'string' ? source.name.trim() : '';
-  if (!name) throw new Error('請輸入客戶名稱');
-  const optional = (key: string) => typeof source[key] === 'string' ? source[key].trim() || undefined : undefined;
+  const input = clientInput(payload);
   const user = await requireUser();
   const existing = await repository.findAllClients(user.id);
   if (existing.error) throw existing.error;
-  if ((existing.data ?? []).some((client) => client.name.trim().toLocaleLowerCase('zh-TW') === name.toLocaleLowerCase('zh-TW'))) throw new Error('已有相同名稱的客戶，請編輯或合併既有客戶');
-  const { data, error } = await repository.createClient({ name, contactName: optional('contactName'), contactEmail: optional('contactEmail'), contactPhone: optional('contactPhone'), notes: optional('notes') }, user.id);
-  if (error || !data) throw error ?? new Error('客戶建立失敗');
+  if ((existing.data ?? []).some((client) => client.name.trim().toLocaleLowerCase('zh-TW') === input.name.toLocaleLowerCase('zh-TW'))) throw new PublicApiError('已有相同名稱的客戶，請編輯或合併既有客戶', 409);
+  const { data, error } = await repository.createClient(input, user.id);
+  if (error || !data) throw error ?? new PublicApiError('客戶建立失敗');
   return mapClient(data);
 }
 
 export async function updateClient(id: string, payload: unknown): Promise<Client> {
-  if (!uuidPattern.test(id) || !payload || typeof payload !== 'object') throw new Error('客戶資料格式不正確');
-  const source = payload as Record<string, unknown>;
-  const name = typeof source.name === 'string' ? source.name.trim() : '';
-  if (!name) throw new Error('請輸入客戶名稱');
-  const optional = (key: string) => typeof source[key] === 'string' ? source[key].trim() || undefined : undefined;
+  if (!uuidPattern.test(id)) throw new PublicApiError('客戶資料格式不正確');
+  const input = clientInput(payload);
   const user = await requireUser();
   const clients = await repository.findAllClients(user.id);
   if (clients.error) throw clients.error;
-  if ((clients.data ?? []).some((client) => client.id !== id && client.name.trim().toLocaleLowerCase('zh-TW') === name.toLocaleLowerCase('zh-TW'))) throw new Error('已有相同名稱的客戶，請改用合併功能');
-  const { data, error } = await repository.updateClient(id, { name, contactName: optional('contactName'), contactEmail: optional('contactEmail'), contactPhone: optional('contactPhone'), notes: optional('notes') }, user.id);
-  if (error || !data) throw error ?? new Error('找不到客戶');
+  if ((clients.data ?? []).some((client) => client.id !== id && client.name.trim().toLocaleLowerCase('zh-TW') === input.name.toLocaleLowerCase('zh-TW'))) throw new PublicApiError('已有相同名稱的客戶，請改用合併功能', 409);
+  const { data, error } = await repository.updateClient(id, input, user.id);
+  if (error || !data) throw error ?? new PublicApiError('找不到客戶', 404);
   return mapClient(data);
 }
 
 export async function mergeClients(sourceId: string, targetId: string) {
-  if (!uuidPattern.test(sourceId) || !uuidPattern.test(targetId) || sourceId === targetId) throw new Error('無效的客戶合併資料');
+  if (!uuidPattern.test(sourceId) || !uuidPattern.test(targetId) || sourceId === targetId) throw new PublicApiError('無效的客戶合併資料');
   const user = await requireUser();
   const clients = await repository.findAllClients(user.id);
   if (clients.error) throw clients.error;
   const ownedIds = new Set((clients.data ?? []).map((client) => client.id));
-  if (!ownedIds.has(sourceId) || !ownedIds.has(targetId)) throw new Error('找不到客戶');
+  if (!ownedIds.has(sourceId) || !ownedIds.has(targetId)) throw new PublicApiError('找不到客戶', 404);
+  const merged = await repository.mergeClientsAtomically(sourceId, targetId);
+  const missingRpc = typeof merged.error === 'object' && merged.error !== null && 'code' in merged.error
+    && (merged.error.code === 'PGRST202' || merged.error.code === '42883');
+  if (!merged.error) return;
+  if (!missingRpc) throw merged.error;
+
+  // Backward-compatible path until the security migration has been applied.
   const moved = await repository.moveClientProjects(sourceId, targetId, user.id);
   if (moved.error) throw moved.error;
   const removed = await repository.removeClient(sourceId, user.id);
@@ -83,19 +115,19 @@ export async function mergeClients(sourceId: string, targetId: string) {
 }
 
 export async function deleteClient(id: string) {
-  if (!uuidPattern.test(id)) throw new Error('無效的客戶 ID');
+  if (!uuidPattern.test(id)) throw new PublicApiError('無效的客戶 ID');
   const user = await requireUser();
   const { error } = await repository.removeClient(id, user.id);
   if (error) throw error;
 }
 
 export async function changeProjectClient(id: string, clientId: string | null) {
-  if (!uuidPattern.test(id) || (clientId !== null && !uuidPattern.test(clientId))) throw new Error('無效的資料 ID');
+  if (!uuidPattern.test(id) || (clientId !== null && !uuidPattern.test(clientId))) throw new PublicApiError('無效的資料 ID');
   const user = await requireUser();
   if (clientId) {
     const { data, error } = await repository.findAllClients(user.id);
     if (error) throw error;
-    if (!(data ?? []).some((client) => client.id === clientId)) throw new Error('找不到客戶');
+    if (!(data ?? []).some((client) => client.id === clientId)) throw new PublicApiError('找不到客戶', 404);
   }
   const { error } = await repository.assignProjectClient(id, clientId, user.id);
   if (error) throw error;
@@ -116,16 +148,16 @@ export async function upsertProject(id: string, payload: unknown): Promise<Proje
   const user = await requireUser();
   const { data, error } = await repository.saveProject(project, user.id);
   if (error) {
-    if (typeof error === 'object' && error && 'code' in error && error.code === '23505') throw new Error('同步衝突：雲端已存在同一專案');
+    if (typeof error === 'object' && error && 'code' in error && error.code === '23505') throw new PublicApiError('同步衝突：雲端已存在同一專案', 409);
     throw error;
   }
-  if (!data) throw new Error('同步衝突：雲端專案已被其他裝置更新');
+  if (!data) throw new PublicApiError('同步衝突：雲端專案已被其他裝置更新', 409);
   const saved = cleanProjectData(data.project_data, id) ?? project;
   return { ...saved, syncVersion: data.updated_at };
 }
 
 export async function deleteProject(id: string) {
-  if (!uuidPattern.test(id)) throw new Error('無效的專案 ID');
+  if (!uuidPattern.test(id)) throw new PublicApiError('無效的專案 ID');
   const user = await requireUser();
   const { error } = await repository.removeProject(id, user.id);
   if (error) throw error;

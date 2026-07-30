@@ -57,6 +57,39 @@ describe('任務邏輯', () => {
     expect(updated.tasks.find((item) => item.moduleId === 'Finance')).toMatchObject({ readyForCollection: true, isPaid: false });
   });
 
+  it('舊資料只有製作任務指向收入時，移至已交付仍會標示可收款', () => {
+    const project = createProjectData('legacy-short-project', '舊短影音', 'shortVideoEditing');
+    project.tasks = [
+      {
+        id: 'production-task',
+        moduleId: 'Scripting',
+        title: '舊版短影音',
+        status: '待收素材',
+        amount: 0,
+        isPaid: false,
+        linkedTaskId: 'income-task',
+        updatedAt: '2026-07-01T00:00:00.000Z',
+      },
+      {
+        id: 'income-task',
+        moduleId: 'Finance',
+        title: '舊版短影音 (影片收入)',
+        status: '📝 待請款',
+        amount: 1000,
+        isPaid: false,
+        transactionType: 'income',
+        updatedAt: '2026-07-01T00:00:00.000Z',
+      },
+    ];
+
+    const updated = updateTaskInProject(project, 'production-task', { status: '已交付' });
+
+    expect(updated.tasks.find((item) => item.id === 'income-task')).toMatchObject({
+      readyForCollection: true,
+      isPaid: false,
+    });
+  });
+
   it('節目企劃任務填寫收入時會同時保留連動支出', () => {
     const project = createProjectData('program-project', '節目企劃', 'programPlanning');
     const updated = addTaskToProject(project, '完成田調', 'Scripting', '田調中', undefined, undefined, 5000);

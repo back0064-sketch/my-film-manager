@@ -60,16 +60,18 @@ export function updateTaskInProject(project: ProjectData, taskId: string, update
   const now = new Date().toISOString();
   let tasks = project.tasks.map((item) => item.id === taskId ? { ...item, ...updates, updatedAt: now } : item);
   const changed = tasks.find((item) => item.id === taskId)!;
+  const isLinkedFinanceTask = (item: Task) => item.moduleId === 'Finance'
+    && (item.linkedTaskId === changed.id || item.id === changed.linkedTaskId);
 
   if (updates.title && changed.moduleId !== 'Finance') {
-    tasks = tasks.map((item) => item.linkedTaskId === changed.id
+    tasks = tasks.map((item) => isLinkedFinanceTask(item)
       ? { ...item, title: `${updates.title} (${item.transactionType === 'income' ? '任務收入' : financeLabels[changed.moduleId] ?? '費用'})`, updatedAt: now }
       : item);
   }
 
   if (changed.moduleId !== 'Finance' && updates.status !== undefined) {
     const finalStatus = project.moduleConfigs.find((config) => config.moduleId === changed.moduleId)?.customStatuses.at(-1);
-    tasks = tasks.map((item) => item.linkedTaskId === changed.id && item.transactionType === 'income'
+    tasks = tasks.map((item) => isLinkedFinanceTask(item) && item.transactionType === 'income'
       ? { ...item, readyForCollection: changed.status === finalStatus, updatedAt: now }
       : item);
   }

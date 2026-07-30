@@ -12,7 +12,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    return NextResponse.json(await addClient(await readJson(request)), { status: 201 });
+    return NextResponse.json(await addClient(await readJson(request, 32_000)), { status: 201 });
   } catch (error) {
     return apiError(error);
   }
