@@ -46,7 +46,7 @@ async function mockApi(page: Page) {
     }) as typeof window.fetch;
   }, {
     projectFixture: project,
-    projectList: [{ id: projectId, name: project.name, clientId, clientName: '測試客戶', updated_at: now, taskCount: 2, outstandingAmount: 0, outstandingReceivable: 0, outstandingPayable: 0 }],
+    projectList: [{ id: projectId, name: project.name, clientId, clientName: '測試客戶', updated_at: now, taskCount: 2, outstandingAmount: 7890, outstandingReceivable: 123456, outstandingPayable: 7890 }],
     clientList: [{ id: clientId, name: '測試客戶', created_at: now, updated_at: now }],
     fixtureProjectId: projectId,
     fixtureClientId: clientId,
@@ -78,4 +78,18 @@ test('刪除客戶會呼叫 API 並從大廳移除客戶', async ({ page }) => {
 
   await expect.poll(() => page.evaluate(() => (window as typeof window & { __deletedClient?: boolean }).__deletedClient)).toBe(true);
   await expect(page.getByRole('heading', { name: '測試客戶' })).toBeHidden();
+});
+
+test('大廳財務金額預設隱藏並可手動顯示', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+
+  const financeSummary = page.getByRole('region', { name: '財務隱私控制' });
+  await expect(financeSummary.getByLabel('財務金額已隱藏')).toBeVisible();
+  await expect(financeSummary.getByText('NT$ 123,456')).toBeHidden();
+  await expect(page.getByText('財務金額已隱藏')).toBeVisible();
+
+  await financeSummary.getByRole('button', { name: '顯示金額' }).click();
+  await expect(financeSummary.getByText('NT$ 123,456')).toBeVisible();
+  await expect(page.getByText('待收 NT$ 123,456 · 待付 NT$ 7,890')).toBeVisible();
 });
