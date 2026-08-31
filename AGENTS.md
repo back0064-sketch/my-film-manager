@@ -16,8 +16,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - GitHub：`https://github.com/back0064-sketch/my-film-manager`
 - Git remote：`origin` 指向上述 GitHub 儲存庫
 - Production 分支：`main`
-- 最後確認的 HEAD：`ac0497c406bc47e4ee561dab2132e585064b682a`
-- 最後確認的 commit：`新增月份財務報表並強化安全性`
+- 最後確認的 Production 程式碼基準：`ac0497c406bc47e4ee561dab2132e585064b682a`
+- 最後確認的 Production 程式碼 commit：`新增月份財務報表並強化安全性`
+- 目前 GitHub `main` 的交接紀錄 commit：`bdde7fd1ef4a4d075f67b452b29af8f2b357458a`（只新增本文件，未改動應用程式碼）
 - Production：`https://my-film-manager.vercel.app/`
 - Vercel 專案：`my-film-manager`，由 GitHub `main` 自動部署
 - Supabase Production 專案：`back0064-sketch's Project`
@@ -117,7 +118,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
    git log -1 --oneline
    git ls-remote origin refs/heads/main
    ```
-   新裝置的 `HEAD`、遠端 `main` 與本文件記錄的 commit 必須一致或由使用者明確確認有更新。
+   新裝置的 `HEAD` 應與遠端 `main` 一致；本文件中的 Production 程式碼基準與交接紀錄 commit 是不同用途的參考點，若遠端出現更新，先確認差異再繼續。
 7. 登入 Supabase 時進入 `back0064-sketch's Org` 的 `back0064-sketch's Project`，不要進入同一帳號下的其他組織（例如「剪輯」）。先確認專案為 `Healthy`，再查看 Advisors、Policies、Backups 與 Auth。
 8. 登入 Vercel 時確認專案是 `my-film-manager`，Git 來源為 `back0064-sketch/my-film-manager`，Production branch 是 `main`，並確認 Production／Preview 環境變數存在但不公開其值。
 9. 轉移完成後做一次正式站唯讀驗證：首頁可開啟、登入可用、未登入 API 仍回 401、已登入使用者可讀取自己的資料；不要在未確認同步版本前覆寫 `MENSGAME`。
