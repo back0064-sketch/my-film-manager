@@ -25,7 +25,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Supabase project ref：`xmbpkmxrhxobqixqdyep`
 - Supabase 專案網址：`https://xmbpkmxrhxobqixqdyep.supabase.co`
 - GitHub、Vercel、Supabase 的管理者身分均是 `back0064-sketch`；登入信箱不記錄在公開專案文件中。
-- Vercel 需要的環境變數名稱只有：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`。值只放在 Vercel 與新裝置自己的未追蹤 `.env.local`。
+- Vercel 網站登入需要 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`；每日 Google 試算表備份另需 `SUPABASE_SECRET_KEY`、`GOOGLE_SHEETS_SPREADSHEET_ID`、`GOOGLE_SERVICE_ACCOUNT_EMAIL`、`GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`、`CRON_SECRET`。值只放在 Vercel 與新裝置自己的未追蹤 `.env.local`。
 
 ### 2. 已完成的接管健檢（已驗證）
 
