@@ -75,6 +75,7 @@ export function buildOverdueItemsFromNormalized(
     const amount = numeric(task.amount);
     if (task.module_id === 'Finance') {
       if (task.transaction_type !== 'income' && task.transaction_type !== 'expense') continue;
+      if (amount <= 0) continue;
       // 月結批次本身是收入的唯一追款來源，避免同一筆金額寄兩次提醒。
       if (task.transaction_type === 'income' && task.settlement_batch_id) continue;
       items.push({
