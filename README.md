@@ -48,6 +48,20 @@ GitHub Actions 會在推送到 `main` 或建立以 `main` 為目標的 Pull Requ
 
 Migration 會回填既有 JSONB，但不刪除或改寫 `project_data`；儲存專案後，網站也會嘗試同步正規化投影，若正式庫尚未套用 migration 則自動保留舊流程。因正式庫目前沒有可靠的 migration 歷史，請先在 staging／分支驗證，再用 Supabase CLI 的 `db push` 或 SQL Editor 套用，並在套用後核對各表筆數與 RLS Advisors。
 
+套用後可在 SQL Editor 做唯讀核對：
+
+```sql
+select 'projects' as source, count(*) from public.film_projects
+union all select 'tasks', count(*) from public.project_tasks
+union all select 'settlement_batches', count(*) from public.project_settlement_batches
+union all select 'settlement_items', count(*) from public.project_settlement_items;
+
+select tablename, rowsecurity
+from pg_tables
+where schemaname = 'public'
+  and tablename in ('project_tasks', 'project_settlement_batches', 'project_settlement_items', 'backup_runs', 'overdue_notification_deliveries');
+```
+
 ## 逾期通知自動化
 
 Vercel 每日約台北時間 10:53 呼叫 `/api/cron/overdue-notifications`。它會優先讀正規化任務／月結表，未套用 migration 時才退回讀 JSONB；同一位 owner、同一天、同一組逾期項目只寄一次，避免重複轟炸。
