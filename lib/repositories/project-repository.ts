@@ -76,16 +76,26 @@ export async function saveProject(project: ProjectData, ownerId: string): Promis
     owner_id: ownerId,
     updated_at: updatedAt,
   };
-  if (!project.syncVersion) {
-    return database.from('film_projects').insert(payload).select('id, name, updated_at, project_data').single();
-  }
-  return database.from('film_projects')
-    .update(payload)
-    .eq('id', project.id)
-    .eq('owner_id', ownerId)
-    .eq('updated_at', project.syncVersion)
-    .select('id, name, updated_at, project_data')
-    .maybeSingle();
+  const result = !project.syncVersion
+    ? await database.from('film_projects').insert(payload).select('id, name, updated_at, project_data').single()
+    : await database.from('film_projects')
+      .update(payload)
+      .eq('id', project.id)
+      .eq('owner_id', ownerId)
+      .eq('updated_at', project.syncVersion)
+      .select('id, name, updated_at, project_data')
+      .maybeSingle();
+
+  if (!result.error && result.data) await bestEffortNormalizeProject(database, project.id);
+  return result as { data: FilmProjectRow | null; error: unknown };
+}
+
+async function bestEffortNormalizeProject(database: Awaited<ReturnType<typeof createServerSupabaseClient>>, projectId: string) {
+  const normalized = await database.rpc('normalize_project_data', { p_project_id: projectId });
+  if (!normalized.error) return;
+  const error = normalized.error as { code?: string; message?: string };
+  const migrationNotApplied = error.code === 'PGRST202' || error.code === '42883' || error.code === '42P01';
+  if (!migrationNotApplied) console.warn('專案 JSONB 正規化同步失敗，保留原始資料', error.message ?? error);
 }
 
 export async function removeProject(id: string, ownerId: string) {

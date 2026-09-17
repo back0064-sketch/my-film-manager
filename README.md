@@ -35,6 +35,27 @@ GitHub Actions 會在推送到 `main` 或建立以 `main` 為目標的 Pull Requ
 
 除原本的 Supabase 公開設定外，Production 需設定 `.env.example` 所列的五個伺服器端變數。Google 試算表必須共用給該服務帳號的 Email，權限設為「編輯者」。所有私密金鑰只能放在 Vercel Environment Variables 或未追蹤的 `.env.local`，不可提交 Git。
 
+每日備份排程會先執行一次最小 Supabase heartbeat，再匯出資料；因此同一支排程同時負責資料庫活動訊號與備份。這只能降低 Free Plan 因長時間無活動而暫停的機率，不能取代付費方案的可用性保證。若網站是正式營運工具，建議升級 Supabase Pro，並把 Google 試算表當第二份可讀備份，不要把它當成回寫來源。
+
+## JSONB 拆分與正式 Migration
+
+目前 `film_projects.project_data` 仍保留為原始資料來源。`supabase/migrations/20260917023844_normalize_project_data.sql` 會以增量方式建立：
+
+- `project_tasks`：任務、截止日、收支與付款狀態欄位。
+- `project_settlement_batches`：每個專案、每個月份的獨立請款批次。
+- `project_settlement_items`：批次內每支影片與單價。
+- `backup_runs`、`overdue_notification_deliveries`：自動化的稽核與去重紀錄。
+
+Migration 會回填既有 JSONB，但不刪除或改寫 `project_data`；儲存專案後，網站也會嘗試同步正規化投影，若正式庫尚未套用 migration 則自動保留舊流程。因正式庫目前沒有可靠的 migration 歷史，請先在 staging／分支驗證，再用 Supabase CLI 的 `db push` 或 SQL Editor 套用，並在套用後核對各表筆數與 RLS Advisors。
+
+## 逾期通知自動化
+
+Vercel 每日約台北時間 10:53 呼叫 `/api/cron/overdue-notifications`。它會優先讀正規化任務／月結表，未套用 migration 時才退回讀 JSONB；同一位 owner、同一天、同一組逾期項目只寄一次，避免重複轟炸。
+
+要啟用 Email，Production 需另外設定：
+
+`RESEND_API_KEY`、`RESEND_FROM`（已驗證的寄件網域）、`OVERDUE_NOTIFICATION_TO`（可用逗號分隔多個收件人）、`OVERDUE_NOTIFICATION_OWNER_ID`（要通知的 owner UUID）。最後一個變數是刻意保留的資料隔離閘門；多帳號環境不可省略，避免把不同使用者的逾期資料混寄。未設定完整時，排程會回報 `missing_configuration`，不會嘗試寄信。
+
 ## 每日工作指揮與跨專案追款
 
 登入後的大廳會先顯示每日工作指揮：將各專案尚未完成的任務依逾期、今天、近期與未排期限排序；同一區塊也會彙整各專案及各月份月結的待收款，並標示到期與逾期狀態。指揮台只顯示摘要，實際編輯仍回到專案看板或財務頁，Supabase 仍是唯一正式資料來源。
