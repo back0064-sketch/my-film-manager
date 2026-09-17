@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { apiError, PublicApiError, readJson } from '@/lib/middlewares/api-handler';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createAuthenticatedMfaClient } from '@/lib/auth/mfa-session';
 
 function factorView(factor: Record<string, unknown>) {
   return {
@@ -15,7 +15,7 @@ function factorView(factor: Record<string, unknown>) {
 
 export async function GET() {
   try {
-    const supabase = await createServerSupabaseClient();
+    const supabase = await createAuthenticatedMfaClient();
     const [{ data: factors, error: factorsError }, { data: aal, error: aalError }] = await Promise.all([
       supabase.auth.mfa.listFactors(),
       supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
@@ -39,7 +39,7 @@ export async function DELETE(request: Request) {
     const factorId = payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).factorId === 'string'
       ? (payload as Record<string, unknown>).factorId as string : '';
     if (!factorId) throw new PublicApiError('缺少 MFA 驗證器 ID');
-    const supabase = await createServerSupabaseClient();
+    const supabase = await createAuthenticatedMfaClient();
     const { error } = await supabase.auth.mfa.unenroll({ factorId });
     if (error) throw error;
     return new NextResponse(null, { status: 204 });
