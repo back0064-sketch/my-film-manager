@@ -1,4 +1,4 @@
-import { ModuleConfig, ModuleId, MonthlySettlement, ProjectData, ProjectType, Task } from '@/types/project';
+import { ModuleConfig, ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch, Task } from '@/types/project';
 
 export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
   { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
@@ -51,7 +51,40 @@ function cleanTask(value: unknown): Task | null {
     linkedTaskId: typeof value.linkedTaskId === 'string' ? value.linkedTaskId : undefined,
     previousStatus: typeof value.previousStatus === 'string' ? value.previousStatus : undefined,
     paidAt: typeof value.paidAt === 'string' ? value.paidAt : undefined,
+    unitPrice: typeof value.unitPrice === 'number' && Number.isFinite(value.unitPrice) ? Math.max(0, value.unitPrice) : undefined,
+    deliveredAt: typeof value.deliveredAt === 'string' ? value.deliveredAt : undefined,
+    settlementBatchId: typeof value.settlementBatchId === 'string' ? value.settlementBatchId : undefined,
+    archivedAt: typeof value.archivedAt === 'string' ? value.archivedAt : undefined,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
+  };
+}
+
+function cleanSettlementBatch(value: unknown): SettlementBatch | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.month !== 'string' || !/^\d{4}-\d{2}$/.test(value.month) || !Array.isArray(value.items)) return null;
+  const items = value.items.flatMap((item) => {
+    if (!isRecord(item) || typeof item.taskId !== 'string' || typeof item.title !== 'string') return [];
+    return [{
+      taskId: item.taskId,
+      title: item.title,
+      unitPrice: typeof item.unitPrice === 'number' && Number.isFinite(item.unitPrice) ? Math.max(0, item.unitPrice) : 0,
+      deliveredAt: typeof item.deliveredAt === 'string' ? item.deliveredAt : `${value.month}-01T00:00:00.000Z`,
+    }];
+  });
+  const subtotal = items.reduce((sum, item) => sum + item.unitPrice, 0);
+  const adjustment = typeof value.adjustment === 'number' && Number.isFinite(value.adjustment) ? value.adjustment : 0;
+  return {
+    id: value.id,
+    month: value.month,
+    items,
+    subtotal,
+    adjustment,
+    total: Math.max(0, subtotal + adjustment),
+    status: value.status === 'invoiced' || value.status === 'paid' ? value.status : 'draft',
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
+    invoiceDate: typeof value.invoiceDate === 'string' ? value.invoiceDate : undefined,
+    dueDate: typeof value.dueDate === 'string' ? value.dueDate : undefined,
+    paidAt: typeof value.paidAt === 'string' ? value.paidAt : undefined,
+    notes: typeof value.notes === 'string' ? value.notes : undefined,
   };
 }
 
@@ -93,7 +126,7 @@ function cleanModuleConfigs(value: unknown): ModuleConfig[] {
 
 export function createProjectData(id: string, name = '未命名影視專案', projectType: ProjectType = 'general'): ProjectData {
   const isFlatRate = projectType === 'shortVideoEditing';
-  return { id, name, projectType, isFlatRate, monthlySettlements: [], budgetAmount: 0, tasks: [], moduleConfigs: PROJECT_TYPE_TEMPLATES[projectType] };
+  return { id, name, projectType, isFlatRate, monthlySettlements: [], settlementBatches: [], budgetAmount: 0, defaultUnitPrice: 0, tasks: [], moduleConfigs: PROJECT_TYPE_TEMPLATES[projectType] };
 }
 
 export function switchProjectTemplate(project: ProjectData, projectType: ProjectType): ProjectData {
@@ -106,6 +139,7 @@ export function switchProjectTemplate(project: ProjectData, projectType: Project
     isFlatRate,
     monthlySettlements: project.monthlySettlements,
     monthlySettlement: project.monthlySettlement,
+    settlementBatches: project.settlementBatches,
     moduleConfigs,
     tasks: project.tasks.map((task) => {
       const moduleId = task.moduleId === 'Finance' ? 'Finance' : 'Scripting';
@@ -150,6 +184,9 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
     description: settlement.notes,
     updatedAt: `${settlement.month}-01T00:00:00.000Z`,
   }));
+  const settlementBatches = Array.isArray(source.settlementBatches)
+    ? source.settlementBatches.flatMap((item) => { const batch = cleanSettlementBatch(item); return batch ? [batch] : []; })
+    : [];
 
   return {
     id: fallbackId || (typeof source.id === 'string' ? source.id : ''),
@@ -158,8 +195,10 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
     projectType,
     isFlatRate: source.isFlatRate === true || source.projectType === 'shortVideoEditing',
     budgetAmount: cleanBudgetAmount(source),
+    defaultUnitPrice: typeof source.defaultUnitPrice === 'number' && Number.isFinite(source.defaultUnitPrice) ? Math.max(0, source.defaultUnitPrice) : 0,
     tasks: [...consolidatedTasks, ...settlementIncomeTasks],
     monthlySettlements: [],
+    settlementBatches,
     moduleConfigs,
   };
 }

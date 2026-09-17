@@ -10,10 +10,13 @@ const project = {
   projectType: 'shortVideoEditing',
   isFlatRate: true,
   monthlySettlements: [],
+  settlementBatches: [],
   budgetAmount: 0,
+  defaultUnitPrice: 1000,
   tasks: [
     { id: 'task-1', moduleId: 'Scripting', title: '第一支影片', status: '待收素材', amount: 0, isPaid: false, updatedAt: now },
     { id: 'task-2', moduleId: 'Scripting', title: '修改影片', status: '修改中', amount: 0, isPaid: false, updatedAt: now },
+    { id: 'task-3', moduleId: 'Scripting', title: '九月已交付', status: '已交付', amount: 0, unitPrice: 1500, deliveredAt: '2026-09-10T00:00:00.000Z', isPaid: false, updatedAt: now },
     { id: 'income-1', moduleId: 'Finance', title: '七月收入', status: '💰 已入帳', transactionType: 'income', amount: 12000, isPaid: true, paidAt: '2026-07-05T00:00:00.000Z', updatedAt: now },
     { id: 'expense-1', moduleId: 'Finance', title: '七月支出', status: '💰 已入帳', transactionType: 'expense', amount: 3000, isPaid: true, paidAt: '2026-07-08T00:00:00.000Z', updatedAt: now },
     { id: 'receivable-1', moduleId: 'Finance', title: '六月未收', status: '📝 待請款', transactionType: 'income', transactionDate: '2026-06-20', amount: 5000, isPaid: false, updatedAt: now },
@@ -109,4 +112,40 @@ test('財務頁可依實際收付月份顯示月報', async ({ page }) => {
   await expect(report.getByText('NT$ 3,000', { exact: true })).toBeVisible();
   await expect(report.getByText('+NT$ 9,000', { exact: true })).toBeVisible();
   await expect(report.getByText('六月未收')).toBeVisible();
+});
+
+test('長期專案可將當月已交付影片結案並從看板封存', async ({ page }) => {
+  await mockApi(page);
+  page.on('dialog', (dialog) => dialog.accept());
+  await page.goto('/');
+  await page.getByText(project.name).click();
+
+  const settlement = page.getByRole('region', { name: '專案月結' });
+  await settlement.getByLabel('結算月份').fill('2026-09');
+  await expect(settlement.getByText('1 支待結案')).toBeVisible();
+  await settlement.getByRole('button', { name: '完成本月結案' }).click();
+
+  await expect(settlement.getByText('2026-09 · 1 支')).toBeVisible();
+  await expect(page.getByLabel('任務名稱：九月已交付')).toBeHidden();
+});
+
+test('雲端較慢時仍會先顯示本機專案與快取內容', async ({ page }) => {
+  await page.addInitScript(({ projectFixture, fixtureProjectId }) => {
+    localStorage.setItem(fixtureProjectId, JSON.stringify(projectFixture));
+    const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
+    window.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
+      if (url.pathname === '/api/auth/session') return json({ id: 'user-1', email: 'tester@example.com' });
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (url.pathname === '/api/projects') return json([]);
+      if (url.pathname === '/api/clients') return json([]);
+      if (url.pathname === `/api/projects/${fixtureProjectId}`) return json(projectFixture);
+      return json({ error: 'not mocked' });
+    }) as typeof window.fetch;
+  }, { projectFixture: project, fixtureProjectId: projectId });
+
+  await page.goto('/');
+  await expect(page.getByText(project.name)).toBeVisible({ timeout: 1000 });
+  await page.getByText(project.name).click();
+  await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible({ timeout: 1000 });
 });

@@ -11,6 +11,7 @@ const createTaskId = () => crypto.randomUUID();
 export function addTaskToProject(project: ProjectData, title: string, moduleId: ModuleId, status: string, transactionType?: 'income' | 'expense', transactionAmount?: number, linkedIncomeAmount?: number): ProjectData {
   const taskId = createTaskId();
   const task: Task = { id: taskId, moduleId, title, status, amount: 0, isPaid: false, updatedAt: new Date().toISOString() };
+  if (moduleId !== 'Finance' && transactionType === 'income' && transactionAmount !== undefined) task.unitPrice = Math.max(0, transactionAmount);
   const label = financeLabels[moduleId];
   if (!label) {
     if (moduleId !== 'Finance') return { ...project, tasks: [...project.tasks, task] };
@@ -71,6 +72,10 @@ export function updateTaskInProject(project: ProjectData, taskId: string, update
 
   if (changed.moduleId !== 'Finance' && updates.status !== undefined) {
     const finalStatus = project.moduleConfigs.find((config) => config.moduleId === changed.moduleId)?.customStatuses.at(-1);
+    tasks = tasks.map((item) => item.id !== changed.id ? item : {
+      ...item,
+      deliveredAt: changed.status === finalStatus ? item.deliveredAt ?? now : item.settlementBatchId ? item.deliveredAt : undefined,
+    });
     tasks = tasks.map((item) => isLinkedFinanceTask(item) && item.transactionType === 'income'
       ? { ...item, readyForCollection: changed.status === finalStatus, updatedAt: now }
       : item);

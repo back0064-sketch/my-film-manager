@@ -3,6 +3,7 @@ import 'server-only';
 import { cleanProjectData } from '@/lib/project-data';
 import { requireUser } from '@/lib/auth/session';
 import { PublicApiError } from '@/lib/middlewares/api-handler';
+import { projectFinancialSummary } from '@/lib/projects/project-summary';
 import * as repository from '@/lib/repositories/project-repository';
 import { Client, FilmProjectRow, ProjectData, ProjectListItem } from '@/types/project';
 
@@ -52,10 +53,7 @@ export async function listProjects(): Promise<ProjectListItem[]> {
   if (error) throw error;
   return ((data ?? []) as (FilmProjectRow & { client_id: string | null; clients: { name: string }[] | null })[]).map(({ id, name, client_id, clients, updated_at, project_data }) => {
     const project = cleanProjectData(project_data, id);
-    const financeTasks = project?.tasks.filter((task) => task.moduleId === 'Finance') ?? [];
-    const outstandingPayable = financeTasks.filter((task) => task.transactionType !== 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0);
-    const outstandingReceivable = financeTasks.filter((task) => task.transactionType === 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0)
-      + (project?.monthlySettlements ?? []).filter((settlement) => settlement.status !== 'paid').reduce((sum, settlement) => sum + settlement.deliveredCount * settlement.unitPrice, 0);
+    const { outstandingPayable, outstandingReceivable } = project ? projectFinancialSummary(project) : { outstandingPayable: 0, outstandingReceivable: 0 };
     return { id, name, clientId: client_id, clientName: clients?.[0]?.name ?? null, updated_at, taskCount: project?.tasks.length ?? 0, outstandingAmount: outstandingPayable, outstandingReceivable, outstandingPayable };
   });
 }

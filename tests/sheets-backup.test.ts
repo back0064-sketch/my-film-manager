@@ -16,9 +16,11 @@ describe('Google 試算表備份資料', () => {
           projectType: 'general',
           isFlatRate: true,
           budgetAmount: 120000,
+          defaultUnitPrice: 0,
           moduleConfigs: [],
           tasks: [{ id: 'task-1', moduleId: 'Scripting', title: '完成腳本', status: '進行中', amount: 30000, isPaid: false, updatedAt: '2026-09-16' }],
           monthlySettlements: [{ id: 'settlement-1', month: '2026-09', deliveredCount: 3, unitPrice: 5000, status: 'pending' }],
+          settlementBatches: [],
         },
       },
     ], [
@@ -40,7 +42,7 @@ describe('Google 試算表備份資料', () => {
         id: 'legacy', name: '舊案', owner_id: 'owner-1', client_id: null, updated_at: '2026-09-16',
         project_data: {
           id: 'legacy', name: '舊案', projectType: 'shortVideoEditing', isFlatRate: false, budgetAmount: 0,
-          moduleConfigs: [], tasks: [], monthlySettlements: [],
+          defaultUnitPrice: 0, moduleConfigs: [], tasks: [], monthlySettlements: [], settlementBatches: [],
           monthlySettlement: { id: 'old-1', month: '2026-08', deliveredCount: 1, unitPrice: 3000, status: 'paid' },
         },
       },

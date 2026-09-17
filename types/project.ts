@@ -44,10 +44,42 @@ export interface Task {
   linkedTaskId?: string;
   previousStatus?: string;
   paidAt?: string;
+  /** Per-deliverable price. Falls back to the project default when omitted. */
+  unitPrice?: number;
+  /** First time the task entered the final production status. */
+  deliveredAt?: string;
+  /** Monthly settlement that owns this delivered task. */
+  settlementBatchId?: string;
+  /** Hides settled work from the active board without deleting it. */
+  archivedAt?: string;
   updatedAt: string;
 }
 
 export type MonthlySettlementStatus = 'pending' | 'invoiced' | 'paid';
+
+export type SettlementBatchStatus = 'draft' | 'invoiced' | 'paid';
+
+export interface SettlementBatchItem {
+  taskId: string;
+  title: string;
+  unitPrice: number;
+  deliveredAt: string;
+}
+
+export interface SettlementBatch {
+  id: string;
+  month: string;
+  items: SettlementBatchItem[];
+  subtotal: number;
+  adjustment: number;
+  total: number;
+  status: SettlementBatchStatus;
+  createdAt: string;
+  invoiceDate?: string;
+  dueDate?: string;
+  paidAt?: string;
+  notes?: string;
+}
 
 export interface MonthlySettlement {
   id: string;
@@ -68,9 +100,13 @@ export interface ProjectData {
   projectType: ProjectType;
   isFlatRate: boolean;
   monthlySettlements: MonthlySettlement[];
+  /** New per-project monthly billing records. Legacy monthlySettlements remain readable. */
+  settlementBatches: SettlementBatch[];
   /** Kept only to migrate projects saved before monthly settlement history was added. */
   monthlySettlement?: MonthlySettlement;
   budgetAmount: number;
+  /** Default price for each delivered item; individual tasks may override it. */
+  defaultUnitPrice: number;
   tasks: Task[];
   moduleConfigs: ModuleConfig[];
 }

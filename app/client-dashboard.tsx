@@ -4,14 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Toast, useToast } from '@/app/ui/toast';
 import { projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
+import { projectFinancialSummary } from '@/lib/projects/project-summary';
 import { Client, ProjectListItem, PROJECT_TYPES, ProjectType } from '@/types/project';
 
-const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 function projectListItem(project: ReturnType<typeof createProjectData>, updatedAt = new Date().toISOString()): ProjectListItem {
-  const financeTasks = project.tasks.filter((task) => task.moduleId === 'Finance');
-  const outstandingPayable = financeTasks.filter((task) => task.transactionType !== 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0);
-  const outstandingReceivable = financeTasks.filter((task) => task.transactionType === 'income' && !task.isPaid).reduce((sum, task) => sum + task.amount, 0) + project.monthlySettlements.filter((settlement) => settlement.status !== 'paid').reduce((sum, settlement) => sum + settlement.deliveredCount * settlement.unitPrice, 0);
+  const { outstandingPayable, outstandingReceivable } = projectFinancialSummary(project);
   return { id: project.id, name: project.name, clientId: null, clientName: null, updated_at: updatedAt, taskCount: project.tasks.length, outstandingAmount: outstandingPayable, outstandingReceivable, outstandingPayable };
 }
 
@@ -47,12 +46,24 @@ export function ClientDashboard({ userEmail, onOpenProject, onSignOut }: { userE
           if (project) projectMap.set(id, projectListItem(project));
         } catch { localStorage.removeItem(id); }
       }
+      if (!cancelled && projectMap.size > 0) {
+        setProjects([...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+        setLoading(false);
+      }
       try {
         const [cloudProjects, cloudClients] = await Promise.all([projectApi.list(), projectApi.listClients()]);
         cloudProjects.forEach((project) => projectMap.set(project.id, project));
-        if (!cancelled) setClients(cloudClients);
-      } catch { /* Offline mode keeps locally cached projects. */ }
-      if (!cancelled) { setProjects([...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at))); setLoading(false); }
+        if (!cancelled) {
+          setClients(cloudClients);
+          setProjects([...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setProjects([...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+          setLoading(false);
+        }
+      }
     }
     void loadDashboard();
     return () => { cancelled = true; };

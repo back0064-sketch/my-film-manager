@@ -58,6 +58,19 @@ describe('專案資料', () => {
     expect(project?.syncVersion).toBe('2026-07-27T00:00:00.000Z');
   });
 
+  it('會保留新版專案月結批次與封存欄位', () => {
+    const project = cleanProjectData({
+      name: '長期短影音',
+      defaultUnitPrice: 1200,
+      tasks: [{ id: 'video-1', moduleId: 'Scripting', title: '九月影片', status: '已交付', archivedAt: '2026-09-30T00:00:00.000Z', settlementBatchId: 'batch-1' }],
+      settlementBatches: [{ id: 'batch-1', month: '2026-09', items: [{ taskId: 'video-1', title: '九月影片', unitPrice: 1200, deliveredAt: '2026-09-20T00:00:00.000Z' }], adjustment: -200, status: 'invoiced', createdAt: '2026-09-30T00:00:00.000Z' }],
+    }, 'project-id');
+
+    expect(project?.defaultUnitPrice).toBe(1200);
+    expect(project?.tasks[0]).toMatchObject({ archivedAt: '2026-09-30T00:00:00.000Z', settlementBatchId: 'batch-1' });
+    expect(project?.settlementBatches[0]).toMatchObject({ subtotal: 1200, adjustment: -200, total: 1000, status: 'invoiced' });
+  });
+
   it('切換模板會保留任務並把舊板塊任務移到主流程', () => {
     const project = createProjectData('project-id', '測試專案');
     const switched = switchProjectTemplate({ ...project, tasks: [{ id: 'old-task', moduleId: 'OnSite', title: '舊任務', status: '🎬 拍攝中', amount: 0, isPaid: false, updatedAt: '2026-07-21T00:00:00.000Z' }] }, 'longVideoEditing');

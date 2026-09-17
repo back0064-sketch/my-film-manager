@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
+import { closeSettlementMonth, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject } from '@/lib/projects/settlement-logic';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
-import { ModuleId, MonthlySettlement, ProjectData, ProjectType, Task, TransactionType } from '@/types/project';
+import { ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch, Task, TransactionType } from '@/types/project';
 
 export type SyncStatus = 'syncing' | 'synced' | 'error' | 'conflict';
 
@@ -12,7 +13,9 @@ export function useProjectData(projectId: string) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('syncing');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [readyToSync, setReadyToSync] = useState(false);
   const syncVersion = useRef<string | null>(null);
+  const lastPersistedJson = useRef<string | null>(null);
 
   const syncProject = useCallback(async (projectToSync: ProjectData) => {
     setSyncStatus('syncing');
@@ -21,6 +24,7 @@ export function useProjectData(projectId: string) {
       const saved = await projectApi.save({ ...projectToSync, syncVersion: syncVersion.current ?? undefined });
       syncVersion.current = saved.syncVersion ?? null;
       localStorage.setItem(projectToSync.id, JSON.stringify(saved));
+      lastPersistedJson.current = JSON.stringify(projectToSync);
       setLastSyncedAt(new Date().toISOString());
       setSyncStatus('synced');
       return true;
@@ -36,12 +40,18 @@ export function useProjectData(projectId: string) {
     let cancelled = false;
 
     async function loadProject() {
+      setReadyToSync(false);
+      setLoading(true);
       let localProject: ProjectData | null = null;
       const cached = localStorage.getItem(projectId);
       if (cached) {
         try {
           localProject = cleanProjectData(JSON.parse(cached), projectId);
-          if (localProject && !cancelled) setProject(localProject);
+          if (localProject && !cancelled) {
+            lastPersistedJson.current = JSON.stringify(localProject);
+            setProject(localProject);
+            setLoading(false);
+          }
         } catch {
           localStorage.removeItem(projectId);
         }
@@ -59,6 +69,7 @@ export function useProjectData(projectId: string) {
         syncVersion.current = nextProject.syncVersion ?? null;
         setProject(nextProject);
         localStorage.setItem(projectId, JSON.stringify(nextProject));
+        lastPersistedJson.current = JSON.stringify(nextProject);
         if (cloudLoaded) {
           setLastSyncedAt(new Date().toISOString());
           setSyncStatus('synced');
@@ -66,6 +77,7 @@ export function useProjectData(projectId: string) {
           setSyncStatus('error');
         }
         setLoading(false);
+        setReadyToSync(true);
       }
     }
 
@@ -74,13 +86,15 @@ export function useProjectData(projectId: string) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!project || loading) return;
+    if (!project || loading || !readyToSync) return;
+    const serialized = JSON.stringify(project);
+    if (serialized === lastPersistedJson.current) return;
     const timer = window.setTimeout(async () => {
-      localStorage.setItem(projectId, JSON.stringify(project));
+      localStorage.setItem(projectId, serialized);
       await syncProject(project);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [loading, project, projectId, syncProject]);
+  }, [loading, project, projectId, readyToSync, syncProject]);
 
   const updateProject = (updater: (current: ProjectData) => ProjectData) => {
     setSyncStatus('syncing');
@@ -129,6 +143,22 @@ export function useProjectData(projectId: string) {
     updateProject((current) => ({ ...current, budgetAmount: Math.max(0, amount) }));
   };
 
+  const updateDefaultUnitPrice = (amount: number) => {
+    updateProject((current) => ({ ...current, defaultUnitPrice: Math.max(0, amount) }));
+  };
+
+  const closeMonth = (month: string) => {
+    updateProject((current) => closeSettlementMonth(current, month));
+  };
+
+  const updateSettlementBatch = (id: string, updates: Partial<Pick<SettlementBatch, 'adjustment' | 'invoiceDate' | 'dueDate' | 'notes' | 'status'>>) => {
+    updateProject((current) => updateSettlementBatchInProject(current, id, updates));
+  };
+
+  const reopenSettlementBatch = (id: string) => {
+    updateProject((current) => reopenSettlementBatchInProject(current, id));
+  };
+
   const addMonthlySettlement = () => {
     updateProject((current) => ({ ...current, monthlySettlements: [...current.monthlySettlements, { id: crypto.randomUUID(), month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending' }] }));
   };
@@ -157,5 +187,5 @@ export function useProjectData(projectId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, syncError, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, syncError, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
 }
