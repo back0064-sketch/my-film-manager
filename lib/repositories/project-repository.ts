@@ -2,10 +2,38 @@ import 'server-only';
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Client, FilmProjectRow, ProjectData } from '@/types/project';
+import { NormalizedBatchSummaryRow, NormalizedTaskSummaryRow, ProjectListMetadataRow } from '@/lib/projects/normalized-summary';
 
 export async function findAllProjects(ownerId: string) {
   const database = await createServerSupabaseClient();
   return database.from('film_projects').select('id, name, client_id, updated_at, project_data, clients(name)').eq('owner_id', ownerId).order('updated_at', { ascending: false });
+}
+
+export async function findProjectListMetadata(ownerId: string) {
+  const database = await createServerSupabaseClient();
+  return database
+    .from('film_projects')
+    .select('id, name, client_id, updated_at, clients(name)')
+    .eq('owner_id', ownerId)
+    .order('updated_at', { ascending: false }) as unknown as PromiseLike<{ data: ProjectListMetadataRow[] | null; error: unknown }>;
+}
+
+export async function findNormalizedProjectSummary(ownerId: string) {
+  const database = await createServerSupabaseClient();
+  const [tasks, batches] = await Promise.all([
+    database
+      .from('project_tasks')
+      .select('project_id, task_id, module_id, title, status, is_completed, due_date, transaction_type, amount, is_paid, ready_for_collection, invoice_number, transaction_date, updated_at:source_updated_at, unit_price, delivered_at, settlement_batch_id, archived_at')
+      .eq('owner_id', ownerId),
+    database
+      .from('project_settlement_batches')
+      .select('project_id, batch_id, month, total, status, created_at_source, invoice_date, invoice_number, due_date, updated_at:source_project_updated_at')
+      .eq('owner_id', ownerId),
+  ]);
+  return {
+    tasks: tasks as unknown as { data: NormalizedTaskSummaryRow[] | null; error: unknown },
+    batches: batches as unknown as { data: NormalizedBatchSummaryRow[] | null; error: unknown },
+  };
 }
 
 export async function assignProjectClient(id: string, clientId: string | null, ownerId: string) {

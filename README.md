@@ -29,6 +29,13 @@ GitHub Actions 會在推送到 `main` 或建立以 `main` 為目標的 Pull Requ
 
 部署完成後，請在 Supabase 的 Authentication URL 設定中加入 Vercel 網址，讓登入 Cookie 與重新導向可正常運作。
 
+## 登入救援與 MFA
+
+- 登入錯誤會區分為密碼不正確、Email 尚未驗證、嘗試次數過多與驗證服務暫時不可用；前端不會顯示 Supabase 內部錯誤細節。
+- 忘記密碼會寄出 `/auth/reset` 重設連結。請在 Supabase **Authentication → URL Configuration → Redirect URLs** 加入正式網址與本機網址，例如 `https://my-film-manager.vercel.app/auth/reset`、`http://localhost:3000/auth/reset`。
+- 登入後可在大廳的「帳號安全」啟用 TOTP MFA。啟用後，所有專案／客戶 API 都會要求目前工作階段完成 AAL2；未完成時只能進入 MFA 驗證畫面。
+- MFA 驗證器遺失時，需使用仍可用的已註冊驗證器，或由 Supabase Dashboard 的帳號管理流程處理；系統目前未自行產生 recovery codes。
+
 ## Supabase 每日備份到 Google 試算表
 
 網站仍以 Supabase 作為正式資料來源。Vercel 每天約在台北時間 10:23 呼叫 `/api/cron/backup-to-sheets`，把專案、客戶、任務與月結款項單向匯出到 Google 試算表；試算表的手動修改不會回寫 Supabase。

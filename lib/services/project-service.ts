@@ -2,8 +2,9 @@ import 'server-only';
 
 import { cleanProjectData } from '@/lib/project-data';
 import { requireUser } from '@/lib/auth/session';
-import { PublicApiError } from '@/lib/middlewares/api-handler';
+import { ProjectConflictError, PublicApiError } from '@/lib/middlewares/api-handler';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
+import { buildNormalizedProjectList, NormalizedBatchSummaryRow, NormalizedTaskSummaryRow, ProjectListMetadataRow } from '@/lib/projects/normalized-summary';
 import { buildReceivableItems, buildWorkCommandItems } from '@/lib/projects/work-command';
 import * as repository from '@/lib/repositories/project-repository';
 import { Client, FilmProjectRow, ProjectData, ProjectListItem } from '@/types/project';
@@ -50,6 +51,21 @@ function clientInput(payload: unknown) {
 
 export async function listProjects(): Promise<ProjectListItem[]> {
   const user = await requireUser();
+  // Once the additive normalization migration is present, the lobby avoids
+  // transferring the large JSONB document for every project. If the migration
+  // is still pending, retain the old path so existing deployments keep working.
+  const metadataResult = await repository.findProjectListMetadata(user.id);
+  if (!metadataResult.error) {
+    const normalized = await repository.findNormalizedProjectSummary(user.id);
+    if (!normalized.tasks.error && !normalized.batches.error) {
+      return buildNormalizedProjectList(
+        (metadataResult.data ?? []) as ProjectListMetadataRow[],
+        (normalized.tasks.data ?? []) as NormalizedTaskSummaryRow[],
+        (normalized.batches.data ?? []) as NormalizedBatchSummaryRow[],
+      );
+    }
+  }
+
   const { data, error } = await repository.findAllProjects(user.id);
   if (error) throw error;
   return ((data ?? []) as (FilmProjectRow & { client_id: string | null; clients: { name: string }[] | null })[]).map(({ id, name, client_id, clients, updated_at, project_data }) => {
@@ -160,12 +176,22 @@ export async function upsertProject(id: string, payload: unknown): Promise<Proje
   const user = await requireUser();
   const { data, error } = await repository.saveProject(project, user.id);
   if (error) {
-    if (typeof error === 'object' && error && 'code' in error && error.code === '23505') throw new PublicApiError('同步衝突：雲端已存在同一專案', 409);
+    if (typeof error === 'object' && error && 'code' in error && error.code === '23505') {
+      throw new ProjectConflictError(await currentProjectForConflict(id, user.id), '同步衝突：雲端已存在同一專案');
+    }
     throw error;
   }
-  if (!data) throw new PublicApiError('同步衝突：雲端專案已被其他裝置更新', 409);
+  if (!data) throw new ProjectConflictError(await currentProjectForConflict(id, user.id));
   const saved = cleanProjectData(data.project_data, id) ?? project;
   return { ...saved, syncVersion: data.updated_at };
+}
+
+async function currentProjectForConflict(id: string, ownerId: string): Promise<ProjectData | null> {
+  const result = await repository.findProject(id, ownerId);
+  if (result.error || !result.data) return null;
+  const row = result.data as FilmProjectRow;
+  const project = cleanProjectData(row.project_data, id);
+  return project ? { ...project, syncVersion: row.updated_at } : null;
 }
 
 export async function deleteProject(id: string) {

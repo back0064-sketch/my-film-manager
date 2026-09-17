@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
+import type { ProjectData } from '@/types/project';
 
 export class PublicApiError extends Error {
   constructor(message: string, readonly status = 400) {
     super(message);
     this.name = 'PublicApiError';
+  }
+}
+
+export class ProjectConflictError extends PublicApiError {
+  constructor(readonly remoteProject: ProjectData | null, message = '同步衝突：雲端專案已被其他裝置更新') {
+    super(message, 409);
+    this.name = 'ProjectConflictError';
   }
 }
 
@@ -23,6 +31,15 @@ export async function readJson(request: Request, maxBytes = 1_000_000): Promise<
 }
 
 export function apiError(error: unknown) {
+  if (error instanceof ProjectConflictError) {
+    return NextResponse.json({
+      error: error.message,
+      conflict: {
+        remoteProject: error.remoteProject,
+        remoteUpdatedAt: error.remoteProject?.syncVersion ?? null,
+      },
+    }, { status: error.status });
+  }
   if (error instanceof PublicApiError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }

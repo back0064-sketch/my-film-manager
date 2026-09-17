@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { ClientDashboard } from '@/app/client-dashboard';
+import { SyncConflictPanel } from '@/app/sync-conflict-panel';
 import { ProjectSummary, ProjectWorkspaceNavigation } from '@/app/project-overview';
 import { useProjectData } from '@/hooks/useProjectData';
 import { projectApi } from '@/lib/client/project-api';
@@ -25,15 +26,28 @@ export default function Home() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
+  const [mfaCheckedUserId, setMfaCheckedUserId] = useState<string | null>(null);
+  const [mfaRequired, setMfaRequired] = useState<{ userId: string; factorId: string } | null>(null);
 
   useEffect(() => {
     void projectApi.session().then(setUser).catch(() => setUser(null)).finally(() => setSessionLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const userId = user.id;
+    void projectApi.mfaStatus().then((status) => {
+      const factor = status.factors.find((item) => item.status === 'verified');
+      setMfaRequired(status.nextLevel === 'aal2' && factor ? { userId, factorId: factor.id } : null);
+    }).catch(() => setMfaRequired(null)).finally(() => setMfaCheckedUserId(userId));
+  }, [user]);
+
   if (sessionLoading) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">登入狀態確認中…</main>;
   if (!user) return <AuthScreen onAuthenticated={setUser} />;
+  if (mfaCheckedUserId !== user.id) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">確認帳號安全狀態…</main>;
+  if (mfaRequired?.userId === user.id) return <MfaChallenge factorId={mfaRequired.factorId} onVerified={() => setMfaRequired(null)} onSignOut={() => void projectApi.signOut().finally(() => { setMfaCheckedUserId(null); setUser(null); })} />;
   if (activeProjectId) return <ProjectBoard projectId={activeProjectId} onBack={() => setActiveProjectId(null)} />;
-  return <ClientDashboard userEmail={user.email} onOpenProject={setActiveProjectId} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage); setUser(null); })} />;
+  return <ClientDashboard userEmail={user.email} onOpenProject={setActiveProjectId} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage); setMfaCheckedUserId(null); setMfaRequired(null); setUser(null); })} />;
 }
 
 
@@ -43,6 +57,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
   const submit = async () => {
     setPending(true); setMessage('');
     try {
@@ -56,11 +72,30 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
     finally { setPending(false); }
   };
   const isSignIn = mode === 'signIn';
-  return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl"><h1 className="text-3xl font-black text-indigo-400">🎬 影視製片控制台</h1><p className="mt-2 text-sm text-slate-400">{isSignIn ? '登入以存取你的專案。' : '建立帳號以開始管理專案。'}</p><div className="mt-6 space-y-4"><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void submit()} placeholder="密碼（至少 8 個字元）" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} onClick={() => void submit()} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '處理中…' : isSignIn ? '登入' : '註冊'}</button></div>{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}<button onClick={() => { setMode(isSignIn ? 'signUp' : 'signIn'); setMessage(''); }} className="mt-6 text-sm text-indigo-400 hover:text-indigo-300">{isSignIn ? '還沒有帳號？立即註冊' : '已有帳號？回到登入'}</button></section></main>;
+  const requestReset = async () => {
+    setPending(true); setMessage('');
+    try { await projectApi.requestPasswordReset(resetEmail || email); setMessage('如果這個 Email 有建立帳號，重設連結會寄到信箱。'); }
+    catch (error) { setMessage(error instanceof Error ? error.message : '無法寄出重設信件'); }
+    finally { setPending(false); }
+  };
+  return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl"><h1 className="text-3xl font-black text-indigo-400">🎬 影視製片控制台</h1>{resetMode ? <><p className="mt-2 text-sm text-slate-400">輸入註冊時使用的 Email，我們會寄出重設連結。</p><form onSubmit={(event) => { event.preventDefault(); void requestReset(); }} className="mt-6 space-y-4"><input type="email" required value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '寄送中…' : '寄送重設連結'}</button></form>{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}<button onClick={() => { setResetMode(false); setMessage(''); }} className="mt-6 text-sm text-indigo-400 hover:text-indigo-300">← 回到登入</button></> : <><p className="mt-2 text-sm text-slate-400">{isSignIn ? '登入以存取你的專案。' : '建立帳號以開始管理專案。'}</p><form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="mt-6 space-y-4"><input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密碼（至少 8 個字元）" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '處理中…' : isSignIn ? '登入' : '註冊'}</button></form>{isSignIn && <button onClick={() => { setResetEmail(email); setResetMode(true); setMessage(''); }} className="mt-4 text-sm text-indigo-400 hover:text-indigo-300">忘記密碼？</button>}{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}<button onClick={() => { setMode(isSignIn ? 'signUp' : 'signIn'); setMessage(''); }} className="mt-6 block text-sm text-indigo-400 hover:text-indigo-300">{isSignIn ? '還沒有帳號？立即註冊' : '已有帳號？回到登入'}</button></>}</section></main>;
+}
+
+function MfaChallenge({ factorId, onVerified, onSignOut }: { factorId: string; onVerified: () => void; onSignOut: () => void }) {
+  const [code, setCode] = useState('');
+  const [message, setMessage] = useState('請輸入驗證器 App 顯示的 6 位數代碼。');
+  const [pending, setPending] = useState(false);
+  const verify = async () => {
+    setPending(true); setMessage('');
+    try { await projectApi.mfaVerify(factorId, code); onVerified(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'MFA 驗證失敗'); }
+    finally { setPending(false); }
+  };
+  return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-indigo-900/70 bg-slate-900 p-8 shadow-xl"><h1 className="text-2xl font-black text-indigo-300">需要第二層驗證</h1><p className="mt-3 text-sm text-slate-400">{message}</p><form onSubmit={(event) => { event.preventDefault(); void verify(); }} className="mt-6 space-y-4"><input inputMode="numeric" autoFocus required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6 位數代碼" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-center text-xl tracking-[0.4em]" /><button disabled={pending || code.length !== 6} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '驗證中…' : '驗證並進入工作台'}</button></form><button type="button" onClick={onSignOut} className="mt-6 text-sm text-rose-400 hover:text-rose-300">登出並改用其他帳號</button></section></main>;
 }
 
 function ProjectBoard({ projectId, onBack }: { projectId: string; onBack: () => void }) {
-  const { project, loading, syncStatus, syncError, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask } = useProjectData(projectId);
+  const { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask } = useProjectData(projectId);
   const [activeModule, setActiveModule] = useState<ModuleId>('Scripting');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [addingStatus, setAddingStatus] = useState<string | null>(null);
@@ -122,7 +157,7 @@ function ProjectBoard({ projectId, onBack }: { projectId: string; onBack: () => 
   return <main className="project-board min-h-screen bg-slate-950 p-4 text-slate-100 md:p-8"><div className="mx-auto max-w-7xl">
     <header className="project-board__header mb-6 flex items-center gap-4 border-b border-slate-800 pb-6"><button onClick={onBack} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs">← 返回大廳</button><div><div className="project-board__title-row flex items-center gap-3"><h1 className="text-2xl font-black">{project.name}</h1><button onClick={rename} className="text-xs text-indigo-400 hover:text-indigo-300">重新命名</button><label className="text-xs text-slate-400">工作模板<select value={project.projectType} onChange={(event) => changeTemplate(event.target.value as ProjectType)} className="ml-2 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100">{PROJECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label></div><div className="mt-1 flex items-center gap-2 text-xs"><span className={syncColor}>{syncLabel}{syncStatus === 'synced' && lastSyncedLabel ? ` · ${lastSyncedLabel}` : ''}</span>{syncStatus === 'error' && <button onClick={() => void retrySync()} className="text-indigo-400 hover:text-indigo-300">重新同步</button>}</div></div></header>
     <ProjectWorkspaceNavigation activeModule={activeModule} onChange={(moduleId) => { setActiveModule(moduleId); setAddingStatus(null); }} />
-    {syncStatus === 'conflict' && <section role="alert" className="mb-6 rounded-xl border border-rose-700 bg-rose-950/40 p-4"><h2 className="font-bold text-rose-200">雲端資料已在其他裝置更新</h2><p className="mt-1 text-xs text-rose-200/80">{syncError}。請選擇要使用哪個版本。</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => void resolveConflict('cloud')} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold">載入雲端版本</button><button onClick={() => void resolveConflict('local')} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold">保留本機版本並覆寫</button></div></section>}
+    {syncStatus === 'conflict' && syncConflict && <SyncConflictPanel conflict={syncConflict} message={syncError} onResolve={(choice) => void resolveConflict(choice)} />}
     <ProjectSummary completionRate={completionRate} completedCount={completedTasks.length} totalCount={productionTasks.length} modules={moduleSummaries} />
     <ProjectSettlementPanel project={project} updateDefaultUnitPrice={updateDefaultUnitPrice} closeMonth={closeMonth} updateSettlementBatch={updateSettlementBatch} reopenSettlementBatch={reopenSettlementBatch} />
     <section className="project-task-board space-y-4"><div className="flex items-center justify-between"><div><h2 className="text-sm font-bold">{WORKSPACE_MODULES.find((module) => module.id === activeModule)?.name}</h2><p className="mt-1 hidden text-xs text-slate-400 md:block">拖曳任務卡到其他欄位，或使用卡片內的狀態選單調整流程。</p><p className="mt-1 text-xs text-slate-400 md:hidden">從下方選擇流程階段；任務卡內也可直接變更狀態。</p></div></div>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readJson, apiError, PublicApiError } from '@/lib/middlewares/api-handler';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { classifyAuthError } from '@/lib/auth/auth-errors';
 
 function credentials(payload: unknown) {
   if (typeof payload !== 'object' || payload === null) throw new PublicApiError('登入資料格式不正確');
@@ -15,7 +16,10 @@ export async function POST(request: Request) {
     const supabase = await createServerSupabaseClient();
     const { email, password } = credentials(await readJson(request, 10_000));
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error || !data.user) throw new PublicApiError('登入失敗，請檢查 Email 與密碼', 401);
+    if (error || !data.user) {
+      const classified = classifyAuthError(error ?? { message: '登入失敗' });
+      throw new PublicApiError(classified.message, classified.status);
+    }
     return NextResponse.json({ id: data.user.id, email: data.user.email });
   } catch (error) {
     return apiError(error);

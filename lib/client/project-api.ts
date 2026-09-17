@@ -1,10 +1,19 @@
 import { Client, ProjectData, ProjectListItem } from '@/types/project';
 
+export type ConflictPayload = { remoteProject?: ProjectData | null; remoteUpdatedAt?: string | null };
+
+export class ApiClientError extends Error {
+  constructor(message: string, readonly status: number, readonly details?: { conflict?: ConflictPayload }) {
+    super(message);
+    this.name = 'ApiClientError';
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: 'API 請求失敗' }));
-    throw new Error(body.error);
+    throw new ApiClientError(typeof body.error === 'string' ? body.error : 'API 請求失敗', response.status, body);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -24,5 +33,10 @@ export const projectApi = {
   session: () => request<{ id: string; email?: string } | null>('/api/auth/session'),
   signIn: (email: string, password: string) => request<{ id: string; email?: string }>('/api/auth/sign-in', { method: 'POST', body: JSON.stringify({ email, password }) }),
   signUp: (email: string, password: string) => request<{ needsEmailConfirmation: boolean; email?: string }>('/api/auth/sign-up', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  requestPasswordReset: (email: string) => request<{ sent: boolean }>('/api/auth/password-reset', { method: 'POST', body: JSON.stringify({ email }) }),
+  mfaStatus: () => request<{ factors: { id: string; type: string; friendlyName?: string; status: string; createdAt?: string; updatedAt?: string }[]; currentLevel: string | null; nextLevel: string | null }>('/api/auth/mfa'),
+  mfaEnroll: (friendlyName?: string) => request<{ factorId: string; friendlyName?: string; qrCode?: string; secret?: string; uri?: string }>('/api/auth/mfa/enroll', { method: 'POST', body: JSON.stringify({ friendlyName }) }),
+  mfaVerify: (factorId: string, code: string) => request<{ verified: boolean; currentLevel: string | null; nextLevel: string | null }>('/api/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ factorId, code }) }),
+  mfaUnenroll: (factorId: string) => request<void>('/api/auth/mfa', { method: 'DELETE', body: JSON.stringify({ factorId }) }),
   signOut: () => request<void>('/api/auth/sign-out', { method: 'POST' }),
 };

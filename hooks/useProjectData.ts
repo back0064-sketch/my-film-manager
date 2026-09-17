@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { projectApi } from '@/lib/client/project-api';
+import { ApiClientError, projectApi } from '@/lib/client/project-api';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
 import { closeSettlementMonth, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject } from '@/lib/projects/settlement-logic';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
 import { ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch, Task, TransactionType } from '@/types/project';
 
 export type SyncStatus = 'syncing' | 'synced' | 'error' | 'conflict';
+export type SyncConflict = { local: ProjectData; remote: ProjectData | null; detectedAt: string };
 
 export function useProjectData(projectId: string) {
   const [project, setProject] = useState<ProjectData | null>(null);
@@ -13,6 +14,7 @@ export function useProjectData(projectId: string) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('syncing');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncConflict, setSyncConflict] = useState<SyncConflict | null>(null);
   const [readyToSync, setReadyToSync] = useState(false);
   const syncVersion = useRef<string | null>(null);
   const lastPersistedJson = useRef<string | null>(null);
@@ -30,11 +32,19 @@ export function useProjectData(projectId: string) {
       lastPersistedJson.current = serialized;
       setLastSyncedAt(new Date().toISOString());
       setSyncStatus('synced');
+      setSyncConflict(null);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : '同步失敗';
       setSyncError(message);
-      setSyncStatus(message.includes('同步衝突') ? 'conflict' : 'error');
+      if (error instanceof ApiClientError && error.status === 409) {
+        setSyncConflict({
+          local: projectToSync,
+          remote: error.details?.conflict?.remoteProject ?? null,
+          detectedAt: new Date().toISOString(),
+        });
+        setSyncStatus('conflict');
+      } else setSyncStatus(message.includes('同步衝突') ? 'conflict' : 'error');
       return false;
     }
   }, []);
@@ -129,7 +139,7 @@ export function useProjectData(projectId: string) {
   const resolveConflict = async (choice: 'cloud' | 'local') => {
     if (!project) return;
     try {
-      const cloud = await projectApi.get(projectId);
+      const cloud = syncConflict?.remote ?? await projectApi.get(projectId);
       if (!cloud) {
         syncVersion.current = null;
         await syncProject(project);
@@ -140,9 +150,11 @@ export function useProjectData(projectId: string) {
         projectRef.current = cloud;
         setProject(cloud);
         localStorage.setItem(projectId, JSON.stringify(cloud));
+        lastPersistedJson.current = JSON.stringify(cloud);
         setSyncError(null);
         setSyncStatus('synced');
         setLastSyncedAt(new Date().toISOString());
+        setSyncConflict(null);
       } else {
         await syncProject(project);
       }
@@ -207,5 +219,5 @@ export function useProjectData(projectId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, syncError, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
 }
