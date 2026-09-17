@@ -34,3 +34,9 @@ GitHub Actions 會在推送到 `main` 或建立以 `main` 為目標的 Pull Requ
 網站仍以 Supabase 作為正式資料來源。Vercel 每天約在台北時間 10:23 呼叫 `/api/cron/backup-to-sheets`，把專案、客戶、任務與月結款項單向匯出到 Google 試算表；試算表的手動修改不會回寫 Supabase。
 
 除原本的 Supabase 公開設定外，Production 需設定 `.env.example` 所列的五個伺服器端變數。Google 試算表必須共用給該服務帳號的 Email，權限設為「編輯者」。所有私密金鑰只能放在 Vercel Environment Variables 或未追蹤的 `.env.local`，不可提交 Git。
+
+## 每日工作指揮與跨專案追款
+
+登入後的大廳會先顯示每日工作指揮：將各專案尚未完成的任務依逾期、今天、近期與未排期限排序；同一區塊也會彙整各專案及各月份月結的待收款，並標示到期與逾期狀態。指揮台只顯示摘要，實際編輯仍回到專案看板或財務頁，Supabase 仍是唯一正式資料來源。
+
+大廳會保存一份小型摘要快取，讓最近使用的專案與指揮清單先出現，再於背景向雲端更新；快取不取代 Supabase，也不會把 Google 試算表的手動修改寫回資料庫。

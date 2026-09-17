@@ -52,7 +52,7 @@ async function mockApi(page: Page) {
     }) as typeof window.fetch;
   }, {
     projectFixture: project,
-    projectList: [{ id: projectId, name: project.name, clientId, clientName: '測試客戶', updated_at: now, taskCount: 2, outstandingAmount: 7890, outstandingReceivable: 123456, outstandingPayable: 7890 }],
+    projectList: [{ id: projectId, name: project.name, clientId, clientName: '測試客戶', updated_at: now, taskCount: 2, outstandingAmount: 7890, outstandingReceivable: 123456, outstandingPayable: 7890, workCommandItems: [{ taskId: 'task-2', projectId, projectName: project.name, clientName: '測試客戶', title: '修改影片', status: '修改中', moduleId: 'Scripting', dueDate: '2026-09-16', updatedAt: now }], receivableItems: [{ id: 'batch:1', projectId, projectName: project.name, clientName: '測試客戶', title: '2026-09 月結（3 支）', amount: 123456, dueDate: '2026-09-15', invoiceNumber: 'INV-09', source: 'batch', status: 'invoiced', updatedAt: now }] }],
     clientList: [{ id: clientId, name: '測試客戶', created_at: now, updated_at: now }],
     fixtureProjectId: projectId,
     fixtureClientId: clientId,
@@ -64,7 +64,7 @@ test('手機以狀態選單切換單欄任務，不需要水平滑動', async ({
   await mockApi(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await page.getByText(project.name).click();
+  await page.getByRole('heading', { name: project.name }).click();
 
   const selector = page.getByLabel('目前流程階段');
   await expect(selector).toBeVisible();
@@ -100,10 +100,23 @@ test('大廳財務金額預設隱藏並可手動顯示', async ({ page }) => {
   await expect(page.getByText('待收 NT$ 123,456 · 待付 NT$ 7,890')).toBeVisible();
 });
 
+test('每日工作指揮台會優先顯示逾期工作與追款', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+
+  const command = page.getByRole('region', { name: '每日工作指揮' });
+  await expect(command).toBeVisible();
+  await expect(command.getByText('已逾期').first()).toBeVisible();
+  await expect(command.getByText('修改影片').first()).toBeVisible();
+  await expect(command.getByText('INV-09')).toBeVisible();
+  await command.getByRole('button', { name: /已逾期 修改影片/ }).click();
+  await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible();
+});
+
 test('財務頁可依實際收付月份顯示月報', async ({ page }) => {
   await mockApi(page);
   await page.goto('/');
-  await page.getByText(project.name).click();
+  await page.getByRole('heading', { name: project.name }).click();
   await page.getByRole('button', { name: '💰 財務帳目' }).click();
   await page.getByLabel('報表月份').fill('2026-07');
 
@@ -118,7 +131,7 @@ test('長期專案可將當月已交付影片結案並從看板封存', async ({
   await mockApi(page);
   page.on('dialog', (dialog) => dialog.accept());
   await page.goto('/');
-  await page.getByText(project.name).click();
+  await page.getByRole('heading', { name: project.name }).click();
 
   const settlement = page.getByRole('region', { name: '專案月結' });
   await settlement.getByLabel('結算月份').fill('2026-09');
@@ -145,7 +158,7 @@ test('雲端較慢時仍會先顯示本機專案與快取內容', async ({ page 
   }, { projectFixture: project, fixtureProjectId: projectId });
 
   await page.goto('/');
-  await expect(page.getByText(project.name)).toBeVisible({ timeout: 1000 });
-  await page.getByText(project.name).click();
+  await expect(page.getByRole('heading', { name: project.name })).toBeVisible({ timeout: 1000 });
+  await page.getByRole('heading', { name: project.name }).click();
   await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible({ timeout: 1000 });
 });

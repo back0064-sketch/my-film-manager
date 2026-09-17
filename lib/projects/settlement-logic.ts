@@ -73,6 +73,7 @@ export function closeSettlementMonth(
     status: "draft",
     createdAt: current?.createdAt ?? now,
     invoiceDate: current?.invoiceDate,
+    invoiceNumber: current?.invoiceNumber,
     dueDate: current?.dueDate,
     paidAt: current?.paidAt,
     notes: current?.notes,
@@ -117,7 +118,7 @@ export function updateSettlementBatch(
   updates: Partial<
     Pick<
       SettlementBatch,
-      "adjustment" | "invoiceDate" | "dueDate" | "notes" | "status"
+      "adjustment" | "invoiceDate" | "invoiceNumber" | "dueDate" | "notes" | "status"
     >
   >,
   now = new Date().toISOString(),

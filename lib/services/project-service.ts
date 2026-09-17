@@ -4,6 +4,7 @@ import { cleanProjectData } from '@/lib/project-data';
 import { requireUser } from '@/lib/auth/session';
 import { PublicApiError } from '@/lib/middlewares/api-handler';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
+import { buildReceivableItems, buildWorkCommandItems } from '@/lib/projects/work-command';
 import * as repository from '@/lib/repositories/project-repository';
 import { Client, FilmProjectRow, ProjectData, ProjectListItem } from '@/types/project';
 
@@ -54,7 +55,20 @@ export async function listProjects(): Promise<ProjectListItem[]> {
   return ((data ?? []) as (FilmProjectRow & { client_id: string | null; clients: { name: string }[] | null })[]).map(({ id, name, client_id, clients, updated_at, project_data }) => {
     const project = cleanProjectData(project_data, id);
     const { outstandingPayable, outstandingReceivable } = project ? projectFinancialSummary(project) : { outstandingPayable: 0, outstandingReceivable: 0 };
-    return { id, name, clientId: client_id, clientName: clients?.[0]?.name ?? null, updated_at, taskCount: project?.tasks.length ?? 0, outstandingAmount: outstandingPayable, outstandingReceivable, outstandingPayable };
+    const clientName = clients?.[0]?.name ?? null;
+    return {
+      id,
+      name,
+      clientId: client_id,
+      clientName,
+      updated_at,
+      taskCount: project?.tasks.length ?? 0,
+      outstandingAmount: outstandingPayable,
+      outstandingReceivable,
+      outstandingPayable,
+      workCommandItems: project ? buildWorkCommandItems(project).map((item) => ({ ...item, clientName })) : [],
+      receivableItems: project ? buildReceivableItems(project).map((item) => ({ ...item, clientName })) : [],
+    };
   });
 }
 

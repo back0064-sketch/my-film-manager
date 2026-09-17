@@ -76,9 +76,44 @@ export interface SettlementBatch {
   status: SettlementBatchStatus;
   createdAt: string;
   invoiceDate?: string;
+  /** Optional invoice/reference number used when following up payment. */
+  invoiceNumber?: string;
   dueDate?: string;
   paidAt?: string;
   notes?: string;
+}
+
+export type WorkCommandUrgency = 'overdue' | 'today' | 'upcoming' | 'unscheduled';
+
+export interface WorkCommandItem {
+  taskId: string;
+  projectId: string;
+  projectName: string;
+  clientName?: string | null;
+  title: string;
+  status: string;
+  moduleId: ModuleId;
+  dueDate?: string;
+  updatedAt: string;
+}
+
+export type ReceivableSource = 'batch' | 'income' | 'legacy';
+export type ReceivableStatus = 'pending' | 'invoiced';
+
+export interface ReceivableItem {
+  id: string;
+  projectId: string;
+  projectName: string;
+  clientName?: string | null;
+  title: string;
+  amount: number;
+  dueDate?: string;
+  invoiceDate?: string;
+  invoiceNumber?: string;
+  month?: string;
+  source: ReceivableSource;
+  status: ReceivableStatus;
+  updatedAt: string;
 }
 
 export interface MonthlySettlement {
@@ -121,6 +156,9 @@ export interface ProjectListItem {
   outstandingAmount: number;
   outstandingReceivable: number;
   outstandingPayable: number;
+  /** Small, non-editable summaries used by the cross-project command centre. */
+  workCommandItems?: WorkCommandItem[];
+  receivableItems?: ReceivableItem[];
 }
 
 export interface Client {

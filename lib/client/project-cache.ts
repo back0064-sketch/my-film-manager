@@ -1,3 +1,5 @@
+import { clearDashboardCache } from '@/lib/client/dashboard-cache';
+
 const projectIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function clearLocalProjectCache(storage: Pick<Storage, 'length' | 'key' | 'removeItem'>) {
@@ -7,4 +9,5 @@ export function clearLocalProjectCache(storage: Pick<Storage, 'length' | 'key' |
     if (key && projectIdPattern.test(key)) projectIds.push(key);
   }
   projectIds.forEach((id) => storage.removeItem(id));
+  clearDashboardCache(storage);
 }

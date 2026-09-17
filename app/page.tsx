@@ -4,7 +4,6 @@ import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { ClientDashboard } from '@/app/client-dashboard';
 import { ProjectSummary, ProjectWorkspaceNavigation } from '@/app/project-overview';
-import { ProjectSettlementPanel } from '@/app/project-settlement-panel';
 import { useProjectData } from '@/hooks/useProjectData';
 import { projectApi } from '@/lib/client/project-api';
 import { clearLocalProjectCache } from '@/lib/client/project-cache';
@@ -15,6 +14,11 @@ type SessionUser = { id: string; email?: string };
 const ProjectFinancePanel = dynamic(
   () => import('@/app/project-finance-panel').then((module) => module.ProjectFinancePanel),
   { loading: () => <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">財務資料載入中…</main> },
+);
+
+const ProjectSettlementPanel = dynamic(
+  () => import('@/app/project-settlement-panel').then((module) => module.ProjectSettlementPanel),
+  { loading: () => <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400">月結資料載入中…</section> },
 );
 
 export default function Home() {

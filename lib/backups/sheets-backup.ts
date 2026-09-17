@@ -56,7 +56,7 @@ export async function syncSupabaseToGoogleSheets() {
   const accessToken = await getAccessToken(backupConfig.googleServiceAccountEmail, backupConfig.googleServiceAccountPrivateKey);
 
   await sheetsRequest(backupConfig.googleSheetsSpreadsheetId, 'values:batchClear', accessToken, {
-    ranges: ["'同步狀態'!A1:B13", "'專案'!A1:K", "'客戶'!A1:I", "'任務'!A1:W", "'月結款項'!A1:O"],
+    ranges: ["'同步狀態'!A1:B13", "'專案'!A1:K", "'客戶'!A1:I", "'任務'!A1:W", "'月結款項'!A1:P"],
   });
   await sheetsRequest(backupConfig.googleSheetsSpreadsheetId, 'values:batchUpdate', accessToken, {
     valueInputOption: 'RAW',

@@ -4,7 +4,7 @@ export const BACKUP_HEADERS = {
   projects: ['擁有者 ID', '專案 ID', '專案名稱', '客戶 ID', '客戶名稱', '專案類型', '包案制', '預算金額', '更新時間', '同步版本', '完整專案 JSON'],
   clients: ['擁有者 ID', '客戶 ID', '客戶名稱', '聯絡人', 'Email', '電話', '備註', '建立時間', '更新時間'],
   tasks: ['擁有者 ID', '專案 ID', '專案名稱', '任務 ID', '模組', '任務名稱', '狀態', '說明', '負責人', '截止日', '收支類型', '往來對象', '發票號碼', '付款方式', '收據連結', '交易日期', '可請款', '金額', '已付款', '關聯任務 ID', '前一狀態', '付款時間', '更新時間'],
-  settlements: ['擁有者 ID', '專案 ID', '專案名稱', '月結 ID', '月份', '交付數量', '單價', '小計', '調整金額', '總額', '狀態', '請款日期', '付款期限', '付款時間', '備註'],
+  settlements: ['擁有者 ID', '專案 ID', '專案名稱', '月結 ID', '月份', '交付數量', '單價', '小計', '調整金額', '總額', '狀態', '請款日期', '請款編號', '付款期限', '付款時間', '備註'],
 } as const;
 
 export type ProjectRow = {
@@ -55,13 +55,13 @@ function settlementRows(project: ProjectRow) {
     project.owner_id ?? '', project.id, project.name, settlement.id, settlement.month, settlement.items.length,
     settlement.items.length > 0 && settlement.items.every((item) => item.unitPrice === settlement.items[0].unitPrice) ? settlement.items[0].unitPrice : '',
     settlement.subtotal, settlement.adjustment, settlement.total, settlement.status, settlement.invoiceDate ?? '',
-    settlement.dueDate ?? '', settlement.paidAt ?? '', settlement.notes ?? '',
+    settlement.invoiceNumber ?? '', settlement.dueDate ?? '', settlement.paidAt ?? '', settlement.notes ?? '',
   ]);
   const legacyRows = safeSettlements(project.project_data).map((settlement) => {
     const total = settlement.deliveredCount * settlement.unitPrice;
     return [
       project.owner_id ?? '', project.id, project.name, settlement.id, settlement.month, settlement.deliveredCount,
-      settlement.unitPrice, total, 0, total, settlement.status, settlement.invoiceDate ?? '', '', settlement.paidAt ?? '', settlement.notes ?? '',
+      settlement.unitPrice, total, 0, total, settlement.status, settlement.invoiceDate ?? '', '', '', settlement.paidAt ?? '', settlement.notes ?? '',
     ];
   });
   return [...modernRows, ...legacyRows];

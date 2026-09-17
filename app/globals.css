@@ -23,6 +23,17 @@ body {
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, Helvetica, sans-serif;
 }
 
+/* 大廳資料量增加時，讓畫面外的客戶群組與專案卡延後繪製。 */
+.project-client-group {
+  content-visibility: auto;
+  contain-intrinsic-size: 240px;
+}
+
+.project-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 120px;
+}
+
 /* 財務收支明細不再顯示「對象」欄位；舊資料仍保留供相容讀取。 */
 .min-w-\[1000px\] th:nth-child(2),
 .min-w-\[1000px\] td:nth-child(2) {

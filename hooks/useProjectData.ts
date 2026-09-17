@@ -16,15 +16,18 @@ export function useProjectData(projectId: string) {
   const [readyToSync, setReadyToSync] = useState(false);
   const syncVersion = useRef<string | null>(null);
   const lastPersistedJson = useRef<string | null>(null);
+  const localChangeVersion = useRef(0);
+  const projectRef = useRef<ProjectData | null>(null);
 
   const syncProject = useCallback(async (projectToSync: ProjectData) => {
     setSyncStatus('syncing');
     setSyncError(null);
     try {
+      const serialized = JSON.stringify(projectToSync);
       const saved = await projectApi.save({ ...projectToSync, syncVersion: syncVersion.current ?? undefined });
       syncVersion.current = saved.syncVersion ?? null;
       localStorage.setItem(projectToSync.id, JSON.stringify(saved));
-      lastPersistedJson.current = JSON.stringify(projectToSync);
+      lastPersistedJson.current = serialized;
       setLastSyncedAt(new Date().toISOString());
       setSyncStatus('synced');
       return true;
@@ -40,6 +43,9 @@ export function useProjectData(projectId: string) {
     let cancelled = false;
 
     async function loadProject() {
+      localChangeVersion.current = 0;
+      projectRef.current = null;
+      const loadVersion = localChangeVersion.current;
       setReadyToSync(false);
       setLoading(true);
       let localProject: ProjectData | null = null;
@@ -48,6 +54,7 @@ export function useProjectData(projectId: string) {
         try {
           localProject = cleanProjectData(JSON.parse(cached), projectId);
           if (localProject && !cancelled) {
+            projectRef.current = localProject;
             lastPersistedJson.current = JSON.stringify(localProject);
             setProject(localProject);
             setLoading(false);
@@ -65,11 +72,18 @@ export function useProjectData(projectId: string) {
       } catch { /* Offline mode keeps local data. */ }
 
       if (!cancelled) {
-        const nextProject = cloudProject ?? localProject ?? createProjectData(projectId);
+        const changedDuringLoad = localChangeVersion.current !== loadVersion;
+        const nextProject = changedDuringLoad
+          ? projectRef.current ?? localProject ?? createProjectData(projectId)
+          : cloudProject ?? localProject ?? createProjectData(projectId);
         syncVersion.current = nextProject.syncVersion ?? null;
+        projectRef.current = nextProject;
         setProject(nextProject);
         localStorage.setItem(projectId, JSON.stringify(nextProject));
-        lastPersistedJson.current = JSON.stringify(nextProject);
+        // Keep the pre-edit snapshot when the user changed the cached project
+        // while the cloud request was in flight, so the pending edit is still
+        // picked up once the hook becomes ready to sync.
+        if (!changedDuringLoad) lastPersistedJson.current = JSON.stringify(nextProject);
         if (cloudLoaded) {
           setLastSyncedAt(new Date().toISOString());
           setSyncStatus('synced');
@@ -97,8 +111,13 @@ export function useProjectData(projectId: string) {
   }, [loading, project, projectId, readyToSync, syncProject]);
 
   const updateProject = (updater: (current: ProjectData) => ProjectData) => {
+    localChangeVersion.current += 1;
     setSyncStatus('syncing');
-    setProject((current) => (current ? updater(current) : current));
+    setProject((current) => {
+      const next = current ? updater(current) : current;
+      projectRef.current = next;
+      return next;
+    });
   };
 
   const retrySync = async () => {
@@ -118,6 +137,7 @@ export function useProjectData(projectId: string) {
       }
       syncVersion.current = cloud.syncVersion ?? null;
       if (choice === 'cloud') {
+        projectRef.current = cloud;
         setProject(cloud);
         localStorage.setItem(projectId, JSON.stringify(cloud));
         setSyncError(null);
@@ -151,7 +171,7 @@ export function useProjectData(projectId: string) {
     updateProject((current) => closeSettlementMonth(current, month));
   };
 
-  const updateSettlementBatch = (id: string, updates: Partial<Pick<SettlementBatch, 'adjustment' | 'invoiceDate' | 'dueDate' | 'notes' | 'status'>>) => {
+  const updateSettlementBatch = (id: string, updates: Partial<Pick<SettlementBatch, 'adjustment' | 'invoiceDate' | 'invoiceNumber' | 'dueDate' | 'notes' | 'status'>>) => {
     updateProject((current) => updateSettlementBatchInProject(current, id, updates));
   };
 
