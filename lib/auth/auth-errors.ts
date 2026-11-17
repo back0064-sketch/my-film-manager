@@ -4,6 +4,14 @@ export type AuthErrorLike = {
   message?: string;
 };
 
+export function isInvalidRefreshTokenError(error: AuthErrorLike | null | undefined) {
+  const text = `${error?.code ?? ''} ${error?.message ?? ''}`.toLocaleLowerCase('en-US');
+  return text.includes('refresh_token_not_found')
+    || text.includes('refresh_token_already_used')
+    || text.includes('invalid refresh token')
+    || text.includes('refresh token not found');
+}
+
 export type AuthErrorKind = 'invalid_credentials' | 'email_not_confirmed' | 'rate_limited' | 'service_unavailable' | 'unknown';
 
 export function classifyAuthError(error: AuthErrorLike): { kind: AuthErrorKind; status: number; message: string } {

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { isInvalidRefreshTokenError } from '@/lib/auth/auth-errors';
 
 export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,7 +18,14 @@ export async function proxy(request: NextRequest) {
       },
     },
   });
-  await supabase.auth.getUser();
+  const { error } = await supabase.auth.getUser();
+  if (isInvalidRefreshTokenError(error)) {
+    for (const { name } of request.cookies.getAll()) {
+      if (!name.startsWith('sb-')) continue;
+      request.cookies.set(name, '');
+      response.cookies.set(name, '', { expires: new Date(0), maxAge: 0, path: '/' });
+    }
+  }
   return response;
 }
 
