@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { readJson, apiError, PublicApiError } from '@/lib/middlewares/api-handler';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { classifyAuthError } from '@/lib/auth/auth-errors';
+import { isAllowedOwner } from '@/lib/auth/login-config';
 
 function credentials(payload: unknown) {
   if (typeof payload !== 'object' || payload === null) throw new PublicApiError('登入資料格式不正確');
@@ -19,6 +20,10 @@ export async function POST(request: Request) {
     if (error || !data.user) {
       const classified = classifyAuthError(error ?? { message: '登入失敗' });
       throw new PublicApiError(classified.message, classified.status);
+    }
+    if (!isAllowedOwner(data.user.id)) {
+      await supabase.auth.signOut({ scope: 'local' });
+      throw new PublicApiError('此帳號無法使用這個私人控制台。', 403);
     }
     return NextResponse.json({ id: data.user.id, email: data.user.email });
   } catch (error) {

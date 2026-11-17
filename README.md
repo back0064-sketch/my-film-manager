@@ -31,8 +31,10 @@ GitHub Actions 會在推送到 `main` 或建立以 `main` 為目標的 Pull Requ
 
 ## 登入救援與 MFA
 
+最新登入與維護設定見 [單人登入與維護流程](docs/AUTH_AND_RELEASE.md)。Google 登入需完成一次性 provider／既有帳號設定後才開放，密碼更新統一經本站伺服器處理。
+
 - 登入錯誤會區分為密碼不正確、Email 尚未驗證、嘗試次數過多與驗證服務暫時不可用；前端不會顯示 Supabase 內部錯誤細節。
-- 忘記密碼會寄出 `/auth/reset` 重設連結。請在 Supabase **Authentication → URL Configuration → Redirect URLs** 加入正式網址與本機網址，例如 `https://my-film-manager.vercel.app/auth/reset`、`http://localhost:3000/auth/reset`。
+- 忘記密碼經 `/auth/confirm?next=/auth/reset` 交換工作階段後進入重設頁。Supabase Redirect URLs 需允許此回呼網址；更新密碼經 `/api/auth/password`，保留同來源安全規則。
 - 登入後可在大廳的「帳號安全」啟用 TOTP MFA。啟用後，所有專案／客戶 API 都會要求目前工作階段完成 AAL2；未完成時只能進入 MFA 驗證畫面。
 - MFA 驗證器遺失時，需使用仍可用的已註冊驗證器，或由 Supabase Dashboard 的帳號管理流程處理；系統目前未自行產生 recovery codes。
 

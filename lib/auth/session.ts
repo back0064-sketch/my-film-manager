@@ -3,11 +3,12 @@ import 'server-only';
 import { User } from '@supabase/supabase-js';
 import { PublicApiError } from '@/lib/middlewares/api-handler';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { isAllowedOwner } from '@/lib/auth/login-config';
 
 export async function getCurrentUser(): Promise<User | null> {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  return user;
+  return user && isAllowedOwner(user.id) ? user : null;
 }
 
 export async function requireUser(): Promise<User> {

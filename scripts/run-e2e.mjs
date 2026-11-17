@@ -30,33 +30,15 @@ let finalExitCode = 1;
 
 try {
   await waitForServer();
-  const test = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test'], {
+  const test = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...process.argv.slice(2)], {
     stdio: ['inherit', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  let output = '';
   const exitCode = await new Promise((resolve) => {
-    let settled = false;
-    const finish = (code) => {
-      if (settled) return;
-      settled = true;
-      resolve(code);
-    };
-    const inspect = (chunk, target) => {
-      const text = chunk.toString();
-      target.write(text);
-      output += text;
-      if (/\d+ failed/.test(output)) finish(1);
-      if (/\d+ passed/.test(output) && !/\d+ failed/.test(output)) {
-        setTimeout(() => {
-          finish(0);
-          stopProcessTree(test);
-        }, 500);
-      }
-    };
-    test.stdout.on('data', (chunk) => inspect(chunk, process.stdout));
-    test.stderr.on('data', (chunk) => inspect(chunk, process.stderr));
-    test.on('exit', (code) => finish(code ?? 1));
+    test.stdout.pipe(process.stdout);
+    test.stderr.pipe(process.stderr);
+    test.on('error', () => resolve(1));
+    test.on('exit', (code) => resolve(code ?? 1));
   });
   finalExitCode = exitCode;
 } finally {

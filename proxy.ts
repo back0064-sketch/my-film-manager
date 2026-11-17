@@ -3,6 +3,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { isInvalidRefreshTokenError } from '@/lib/auth/auth-errors';
 
 export async function proxy(request: NextRequest) {
+  // Callback handlers establish a new session themselves. Refreshing an old
+  // session here can race with PKCE exchange and overwrite response cookies.
+  if (['/auth/confirm', '/auth/google/callback', '/api/auth/google'].includes(request.nextUrl.pathname)) {
+    return NextResponse.next({ request });
+  }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return NextResponse.next({ request });
@@ -20,9 +25,13 @@ export async function proxy(request: NextRequest) {
   });
   const { error } = await supabase.auth.getUser();
   if (isInvalidRefreshTokenError(error)) {
-    for (const { name } of request.cookies.getAll()) {
-      if (!name.startsWith('sb-')) continue;
-      request.cookies.set(name, '');
+    const sessionName = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
+    const expired = request.cookies.getAll().filter(({ name }) => name === sessionName || (name.startsWith(`${sessionName}.`) && /^\d+$/.test(name.slice(sessionName.length + 1))));
+    expired.forEach(({ name }) => request.cookies.delete(name));
+    const previous = response.cookies.getAll();
+    response = NextResponse.next({ request });
+    previous.forEach(cookie => response.cookies.set(cookie));
+    for (const { name } of expired) {
       response.cookies.set(name, '', { expires: new Date(0), maxAge: 0, path: '/' });
     }
   }

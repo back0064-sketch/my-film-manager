@@ -23,3 +23,7 @@ jobs:
       - run: npm run test
       - run: npm run lint
       - run: npm run build
+      - name: 安裝測試瀏覽器
+        run: npx playwright install --with-deps chromium
+      - name: 驗證桌機與手機登入及密碼重設
+        run: node scripts/run-e2e.mjs auth.spec.ts
