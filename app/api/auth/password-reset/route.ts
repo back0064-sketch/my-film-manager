@@ -14,7 +14,9 @@ export async function POST(request: Request) {
     const supabase = await createServerSupabaseClient();
     const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '');
     const siteOrigin = configuredOrigin || (process.env.NODE_ENV === 'development' ? new URL(request.url).origin : 'https://my-film-manager.vercel.app');
-    const redirectTo = new URL('/auth/reset', siteOrigin).toString();
+    // SSR clients use PKCE. Route the email through the server callback so the
+    // code/token exchange can write the authenticated recovery session cookie.
+    const redirectTo = new URL('/auth/confirm?next=/auth/reset', siteOrigin).toString();
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) {
       const classified = classifyAuthError(error);

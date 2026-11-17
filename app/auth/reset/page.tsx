@@ -29,7 +29,18 @@ export default function PasswordResetPage() {
     setPending(true); setMessage('');
     const { error } = await getBrowserSupabaseClient().auth.updateUser({ password });
     setPending(false);
-    if (error) { setMessage('密碼更新失敗，請重新申請重設連結。'); return; }
+    if (error) {
+      console.warn('Password reset update failed', { code: error.code, status: error.status });
+      const errorText = `${error.code ?? ''} ${error.message ?? ''}`.toLocaleLowerCase('en-US');
+      if (errorText.includes('weak') || errorText.includes('password') && errorText.includes('policy')) {
+        setMessage('新密碼未符合安全規則，請改用 8 個以上且不要使用常見密碼。');
+      } else if (errorText.includes('session') || errorText.includes('expired') || errorText.includes('token')) {
+        setMessage('重設連結已失效或已過期，請重新申請重設連結。');
+      } else {
+        setMessage('密碼更新失敗，請重新申請重設連結。');
+      }
+      return;
+    }
     setComplete(true); setReady(false); setMessage('密碼已更新，請回到登入頁使用新密碼登入。');
     await getBrowserSupabaseClient().auth.signOut();
   };
