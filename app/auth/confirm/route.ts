@@ -1,10 +1,15 @@
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { PRIVATE_NO_STORE_HEADERS } from '@/lib/middlewares/api-handler';
 
 function safeNext(value: string | null) {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return '/auth/reset';
   return value;
+}
+
+function redirectWithoutCaching(url: URL) {
+  return NextResponse.redirect(url, { headers: PRIVATE_NO_STORE_HEADERS });
 }
 
 export async function GET(request: NextRequest) {
@@ -19,15 +24,15 @@ export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     if (tokenHash && type) {
       const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-      if (!error) return NextResponse.redirect(redirectTo);
+      if (!error) return redirectWithoutCaching(redirectTo);
     }
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (!error) return NextResponse.redirect(redirectTo);
+      if (!error) return redirectWithoutCaching(redirectTo);
     }
   } catch (error) {
     console.error('Auth confirmation failed', error);
   }
 
-  return NextResponse.redirect(new URL('/auth/auth-code-error', request.url));
+  return redirectWithoutCaching(new URL('/auth/auth-code-error', request.url));
 }
