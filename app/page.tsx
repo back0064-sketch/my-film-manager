@@ -28,6 +28,7 @@ export default function Home() {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [mfaCheckedUserId, setMfaCheckedUserId] = useState<string | null>(null);
   const [mfaRequired, setMfaRequired] = useState<{ userId: string; factorId: string } | null>(null);
+  const [mfaCheckError, setMfaCheckError] = useState<string | null>(null);
 
   useEffect(() => {
     void projectApi.session().then(setUser).catch(() => setUser(null)).finally(() => setSessionLoading(false));
@@ -38,21 +39,25 @@ export default function Home() {
     const userId = user.id;
     void projectApi.mfaStatus().then((status) => {
       const factor = status.factors.find((item) => item.status === 'verified');
+      setMfaCheckError(null);
       setMfaRequired(status.nextLevel === 'aal2' && factor ? { userId, factorId: factor.id } : null);
-    }).catch(() => setMfaRequired(null)).finally(() => setMfaCheckedUserId(userId));
+    }).catch(() => {
+      setMfaRequired(null);
+      setMfaCheckError('無法確認帳號安全狀態，請重新登入。');
+    }).finally(() => setMfaCheckedUserId(userId));
   }, [user]);
 
   if (sessionLoading) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">登入狀態確認中…</main>;
   if (!user) return <AuthScreen onAuthenticated={setUser} />;
   if (mfaCheckedUserId !== user.id) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">確認帳號安全狀態…</main>;
-  if (mfaRequired?.userId === user.id) return <MfaChallenge factorId={mfaRequired.factorId} onVerified={() => setMfaRequired(null)} onSignOut={() => void projectApi.signOut().finally(() => { setMfaCheckedUserId(null); setUser(null); })} />;
-  if (activeProjectId) return <ProjectBoard projectId={activeProjectId} onBack={() => setActiveProjectId(null)} />;
-  return <ClientDashboard userEmail={user.email} onOpenProject={setActiveProjectId} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage); setMfaCheckedUserId(null); setMfaRequired(null); setUser(null); })} />;
+  if (mfaCheckError) return <SecurityCheckError onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setMfaCheckError(null); setUser(null); })} />;
+  if (mfaRequired?.userId === user.id) return <MfaChallenge factorId={mfaRequired.factorId} onVerified={() => setMfaRequired(null)} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setUser(null); })} />;
+  if (activeProjectId) return <ProjectBoard projectId={activeProjectId} userId={user.id} onBack={() => setActiveProjectId(null)} />;
+  return <ClientDashboard userId={user.id} userEmail={user.email} onOpenProject={setActiveProjectId} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setUser(null); })} />;
 }
 
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) => void }) {
-  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
@@ -61,24 +66,21 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
   const [resetEmail, setResetEmail] = useState('');
   const submit = async () => {
     setPending(true); setMessage('');
-    try {
-      if (mode === 'signIn') onAuthenticated(await projectApi.signIn(email, password));
-      else {
-        const result = await projectApi.signUp(email, password);
-        setMessage(result.needsEmailConfirmation ? '註冊成功，請到信箱完成驗證後再登入。' : '註冊成功，請使用新帳號登入。');
-        setMode('signIn');
-      }
-    } catch (error) { setMessage(error instanceof Error ? error.message : '操作失敗'); }
+    try { onAuthenticated(await projectApi.signIn(email, password)); }
+    catch (error) { setMessage(error instanceof Error ? error.message : '登入失敗'); }
     finally { setPending(false); }
   };
-  const isSignIn = mode === 'signIn';
   const requestReset = async () => {
     setPending(true); setMessage('');
     try { await projectApi.requestPasswordReset(resetEmail || email); setMessage('如果這個 Email 有建立帳號，重設連結會寄到信箱。'); }
     catch (error) { setMessage(error instanceof Error ? error.message : '無法寄出重設信件'); }
     finally { setPending(false); }
   };
-  return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl"><h1 className="text-3xl font-black text-indigo-400">🎬 影視製片控制台</h1>{resetMode ? <><p className="mt-2 text-sm text-slate-400">輸入註冊時使用的 Email，我們會寄出重設連結。</p><form onSubmit={(event) => { event.preventDefault(); void requestReset(); }} className="mt-6 space-y-4"><input type="email" required value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '寄送中…' : '寄送重設連結'}</button></form>{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}<button onClick={() => { setResetMode(false); setMessage(''); }} className="mt-6 text-sm text-indigo-400 hover:text-indigo-300">← 回到登入</button></> : <><p className="mt-2 text-sm text-slate-400">{isSignIn ? '登入以存取你的專案。' : '建立帳號以開始管理專案。'}</p><form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="mt-6 space-y-4"><input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密碼（至少 8 個字元）" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '處理中…' : isSignIn ? '登入' : '註冊'}</button></form>{isSignIn && <button onClick={() => { setResetEmail(email); setResetMode(true); setMessage(''); }} className="mt-4 text-sm text-indigo-400 hover:text-indigo-300">忘記密碼？</button>}{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}<button onClick={() => { setMode(isSignIn ? 'signUp' : 'signIn'); setMessage(''); }} className="mt-6 block text-sm text-indigo-400 hover:text-indigo-300">{isSignIn ? '還沒有帳號？立即註冊' : '已有帳號？回到登入'}</button></>}</section></main>;
+  return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl"><h1 className="text-3xl font-black text-indigo-400">🎬 影視製片控制台</h1>{resetMode ? <><p className="mt-2 text-sm text-slate-400">輸入既有帳號的 Email，我們會寄出重設連結。</p><form onSubmit={(event) => { event.preventDefault(); void requestReset(); }} className="mt-6 space-y-4"><input type="email" required value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '寄送中…' : '寄送重設連結'}</button></form>{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}<button onClick={() => { setResetMode(false); setMessage(''); }} className="mt-6 text-sm text-indigo-400 hover:text-indigo-300">← 回到登入</button></> : <><p className="mt-2 text-sm text-slate-400">此控制台為私人單人使用，請以既有帳號登入。</p><form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="mt-6 space-y-4"><input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密碼" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm" /><button disabled={pending} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '登入中…' : '登入'}</button></form><button onClick={() => { setResetEmail(email); setResetMode(true); setMessage(''); }} className="mt-4 text-sm text-indigo-400 hover:text-indigo-300">忘記密碼？</button>{message && <p className="mt-4 text-sm text-amber-300">{message}</p>}</>}</section></main>;
+}
+
+function SecurityCheckError({ onSignOut }: { onSignOut: () => void }) {
+  return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-rose-900/70 bg-slate-900 p-8 shadow-xl"><h1 className="text-2xl font-black text-rose-300">無法確認帳號安全狀態</h1><p className="mt-3 text-sm text-slate-400">為保護你的資料，系統暫停進入工作台。請重新登入；若仍持續發生，檢查 Supabase Auth 狀態。</p><button onClick={onSignOut} className="mt-6 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold">登出並重新登入</button></section></main>;
 }
 
 function MfaChallenge({ factorId, onVerified, onSignOut }: { factorId: string; onVerified: () => void; onSignOut: () => void }) {
@@ -94,8 +96,8 @@ function MfaChallenge({ factorId, onVerified, onSignOut }: { factorId: string; o
   return <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100"><section className="w-full max-w-md rounded-2xl border border-indigo-900/70 bg-slate-900 p-8 shadow-xl"><h1 className="text-2xl font-black text-indigo-300">需要第二層驗證</h1><p className="mt-3 text-sm text-slate-400">{message}</p><form onSubmit={(event) => { event.preventDefault(); void verify(); }} className="mt-6 space-y-4"><input inputMode="numeric" autoFocus required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6 位數代碼" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-center text-xl tracking-[0.4em]" /><button disabled={pending || code.length !== 6} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '驗證中…' : '驗證並進入工作台'}</button></form><button type="button" onClick={onSignOut} className="mt-6 text-sm text-rose-400 hover:text-rose-300">登出並改用其他帳號</button></section></main>;
 }
 
-function ProjectBoard({ projectId, onBack }: { projectId: string; onBack: () => void }) {
-  const { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask } = useProjectData(projectId);
+function ProjectBoard({ projectId, userId, onBack }: { projectId: string; userId: string; onBack: () => void }) {
+  const { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask } = useProjectData(projectId, userId);
   const [activeModule, setActiveModule] = useState<ModuleId>('Scripting');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [addingStatus, setAddingStatus] = useState<string | null>(null);

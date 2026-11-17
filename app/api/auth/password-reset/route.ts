@@ -12,7 +12,9 @@ export async function POST(request: Request) {
     const email = ((payload as Record<string, unknown>).email as string).trim();
     if (!email || email.length > 254 || !email.includes('@')) throw new PublicApiError('請輸入有效 Email');
     const supabase = await createServerSupabaseClient();
-    const redirectTo = new URL('/auth/reset', request.url).toString();
+    const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '');
+    const siteOrigin = configuredOrigin || (process.env.NODE_ENV === 'development' ? new URL(request.url).origin : 'https://my-film-manager.vercel.app');
+    const redirectTo = new URL('/auth/reset', siteOrigin).toString();
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) {
       const classified = classifyAuthError(error);

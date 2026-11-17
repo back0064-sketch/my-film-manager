@@ -5,7 +5,8 @@ import { Toast, useToast } from '@/app/ui/toast';
 import { WorkCommandPanel } from '@/app/work-command-panel';
 import { MfaPanel } from '@/app/mfa-panel';
 import { projectApi } from '@/lib/client/project-api';
-import { DASHBOARD_CACHE_KEY, readDashboardCache, writeDashboardCache } from '@/lib/client/dashboard-cache';
+import { dashboardCacheKey, readDashboardCache, writeDashboardCache } from '@/lib/client/dashboard-cache';
+import { projectCacheKey, projectCachePrefix } from '@/lib/client/project-cache';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
 import { buildReceivableItems, buildWorkCommandItems } from '@/lib/projects/work-command';
@@ -34,7 +35,7 @@ function formatUpdatedAt(value: string) {
   return new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-export function ClientDashboard({ userEmail, onOpenProject, onSignOut }: { userEmail?: string; onOpenProject: (id: string) => void; onSignOut: () => void }) {
+export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }: { userId: string; userEmail?: string; onOpenProject: (id: string) => void; onSignOut: () => void }) {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +53,8 @@ export function ClientDashboard({ userEmail, onOpenProject, onSignOut }: { userE
   useEffect(() => {
     let cancelled = false;
     async function loadDashboard() {
-      const cachedProjects = readDashboardCache(localStorage);
+      const cacheKey = dashboardCacheKey(userId);
+      const cachedProjects = readDashboardCache(localStorage, cacheKey);
       const projectMap = new Map<string, ProjectListItem>(cachedProjects.map((project) => [project.id, project]));
       if (!cancelled && cachedProjects.length > 0) {
         setProjects(cachedProjects);
@@ -60,18 +62,19 @@ export function ClientDashboard({ userEmail, onOpenProject, onSignOut }: { userE
       }
       for (let index = 0; index < localStorage.length; index += 1) {
         const id = localStorage.key(index);
-        if (id === DASHBOARD_CACHE_KEY) continue;
-        if (!id || !isProjectId(id)) continue;
+        if (!id || !id.startsWith(projectCachePrefix(userId))) continue;
+        const projectId = id.slice(projectCachePrefix(userId).length);
+        if (!isProjectId(projectId)) continue;
         try {
           const raw = localStorage.getItem(id);
-          const project = raw ? cleanProjectData(JSON.parse(raw), id) : null;
-          if (project) projectMap.set(id, projectListItem(project));
+          const project = raw ? cleanProjectData(JSON.parse(raw), projectId) : null;
+          if (project) projectMap.set(projectId, projectListItem(project));
         } catch { localStorage.removeItem(id); }
       }
       const localProjects = [...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
       if (!cancelled && localProjects.length > 0) {
         setProjects(localProjects);
-        writeDashboardCache(localStorage, localProjects);
+        writeDashboardCache(localStorage, localProjects, cacheKey);
         setLoading(false);
       }
       try {
@@ -81,25 +84,25 @@ export function ClientDashboard({ userEmail, onOpenProject, onSignOut }: { userE
           setClients(cloudClients);
           const nextProjects = [...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
           setProjects(nextProjects);
-          writeDashboardCache(localStorage, nextProjects);
+          writeDashboardCache(localStorage, nextProjects, cacheKey);
           setLoading(false);
         }
       } catch {
         if (!cancelled) {
           const nextProjects = [...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
           setProjects(nextProjects);
-          writeDashboardCache(localStorage, nextProjects);
+          writeDashboardCache(localStorage, nextProjects, cacheKey);
           setLoading(false);
         }
       }
     }
     void loadDashboard();
     return () => { cancelled = true; };
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    if (!loading) writeDashboardCache(localStorage, projects);
-  }, [loading, projects]);
+    if (!loading) writeDashboardCache(localStorage, projects, dashboardCacheKey(userId));
+  }, [loading, projects, userId]);
 
   useEffect(() => () => { if (deletionTimer.current) window.clearTimeout(deletionTimer.current); }, []);
 
@@ -120,7 +123,7 @@ export function ClientDashboard({ userEmail, onOpenProject, onSignOut }: { userE
     if (!name) return;
     const id = crypto.randomUUID();
     const project = createProjectData(id, name, selectedProjectType);
-    localStorage.setItem(id, JSON.stringify(project));
+    localStorage.setItem(projectCacheKey(userId, id), JSON.stringify(project));
     try {
       await projectApi.save(project);
       if (selectedClientId) await projectApi.assignClient(id, selectedClientId);
@@ -189,7 +192,7 @@ export function ClientDashboard({ userEmail, onOpenProject, onSignOut }: { userE
     }
   };
 
-  const permanentlyDeleteProject = (project: ProjectListItem) => { localStorage.removeItem(project.id); void projectApi.remove(project.id); };
+  const permanentlyDeleteProject = (project: ProjectListItem) => { localStorage.removeItem(projectCacheKey(userId, project.id)); void projectApi.remove(project.id); };
   const deleteProject = (project: ProjectListItem) => {
     if (!window.confirm(`確定要刪除「${project.name}」嗎？你可在 6 秒內復原。`)) return;
     if (pendingDeletion) { if (deletionTimer.current) window.clearTimeout(deletionTimer.current); permanentlyDeleteProject(pendingDeletion); }

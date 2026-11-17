@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiClientError, projectApi } from '@/lib/client/project-api';
+import { projectCacheKey } from '@/lib/client/project-cache';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
 import { closeSettlementMonth, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject } from '@/lib/projects/settlement-logic';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
@@ -8,7 +9,7 @@ import { ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch,
 export type SyncStatus = 'syncing' | 'synced' | 'error' | 'conflict';
 export type SyncConflict = { local: ProjectData; remote: ProjectData | null; detectedAt: string };
 
-export function useProjectData(projectId: string) {
+export function useProjectData(projectId: string, userId: string) {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('syncing');
@@ -28,7 +29,7 @@ export function useProjectData(projectId: string) {
       const serialized = JSON.stringify(projectToSync);
       const saved = await projectApi.save({ ...projectToSync, syncVersion: syncVersion.current ?? undefined });
       syncVersion.current = saved.syncVersion ?? null;
-      localStorage.setItem(projectToSync.id, JSON.stringify(saved));
+      localStorage.setItem(projectCacheKey(userId, projectToSync.id), JSON.stringify(saved));
       lastPersistedJson.current = serialized;
       setLastSyncedAt(new Date().toISOString());
       setSyncStatus('synced');
@@ -47,7 +48,7 @@ export function useProjectData(projectId: string) {
       } else setSyncStatus(message.includes('同步衝突') ? 'conflict' : 'error');
       return false;
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +60,8 @@ export function useProjectData(projectId: string) {
       setReadyToSync(false);
       setLoading(true);
       let localProject: ProjectData | null = null;
-      const cached = localStorage.getItem(projectId);
+      const cacheKey = projectCacheKey(userId, projectId);
+      const cached = localStorage.getItem(cacheKey);
       if (cached) {
         try {
           localProject = cleanProjectData(JSON.parse(cached), projectId);
@@ -70,7 +72,7 @@ export function useProjectData(projectId: string) {
             setLoading(false);
           }
         } catch {
-          localStorage.removeItem(projectId);
+          localStorage.removeItem(cacheKey);
         }
       }
 
@@ -89,7 +91,7 @@ export function useProjectData(projectId: string) {
         syncVersion.current = nextProject.syncVersion ?? null;
         projectRef.current = nextProject;
         setProject(nextProject);
-        localStorage.setItem(projectId, JSON.stringify(nextProject));
+        localStorage.setItem(cacheKey, JSON.stringify(nextProject));
         // Keep the pre-edit snapshot when the user changed the cached project
         // while the cloud request was in flight, so the pending edit is still
         // picked up once the hook becomes ready to sync.
@@ -107,18 +109,18 @@ export function useProjectData(projectId: string) {
 
     void loadProject();
     return () => { cancelled = true; };
-  }, [projectId]);
+  }, [projectId, userId]);
 
   useEffect(() => {
     if (!project || loading || !readyToSync) return;
     const serialized = JSON.stringify(project);
     if (serialized === lastPersistedJson.current) return;
     const timer = window.setTimeout(async () => {
-      localStorage.setItem(projectId, serialized);
+      localStorage.setItem(projectCacheKey(userId, projectId), serialized);
       await syncProject(project);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [loading, project, projectId, readyToSync, syncProject]);
+  }, [loading, project, projectId, readyToSync, syncProject, userId]);
 
   const updateProject = (updater: (current: ProjectData) => ProjectData) => {
     localChangeVersion.current += 1;
@@ -132,7 +134,7 @@ export function useProjectData(projectId: string) {
 
   const retrySync = async () => {
     if (!project) return;
-    localStorage.setItem(projectId, JSON.stringify(project));
+    localStorage.setItem(projectCacheKey(userId, projectId), JSON.stringify(project));
     await syncProject(project);
   };
 
@@ -149,7 +151,7 @@ export function useProjectData(projectId: string) {
       if (choice === 'cloud') {
         projectRef.current = cloud;
         setProject(cloud);
-        localStorage.setItem(projectId, JSON.stringify(cloud));
+        localStorage.setItem(projectCacheKey(userId, projectId), JSON.stringify(cloud));
         lastPersistedJson.current = JSON.stringify(cloud);
         setSyncError(null);
         setSyncStatus('synced');

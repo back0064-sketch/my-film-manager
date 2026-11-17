@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { apiError, PublicApiError, readJson } from '@/lib/middlewares/api-handler';
-import { createAuthenticatedMfaClient } from '@/lib/auth/mfa-session';
+import { createAuthenticatedMfaClient, requireAal2MfaClient } from '@/lib/auth/mfa-session';
 
 function factorView(factor: Record<string, unknown>) {
   return {
@@ -39,7 +39,7 @@ export async function DELETE(request: Request) {
     const factorId = payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).factorId === 'string'
       ? (payload as Record<string, unknown>).factorId as string : '';
     if (!factorId) throw new PublicApiError('缺少 MFA 驗證器 ID');
-    const supabase = await createAuthenticatedMfaClient();
+    const supabase = await requireAal2MfaClient();
     const { error } = await supabase.auth.mfa.unenroll({ factorId });
     if (error) throw error;
     return new NextResponse(null, { status: 204 });

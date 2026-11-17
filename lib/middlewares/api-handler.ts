@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { ProjectData } from '@/types/project';
 
+export const PRIVATE_NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+  'Pragma': 'no-cache',
+  'Vary': 'Cookie',
+};
+
 export class PublicApiError extends Error {
   constructor(message: string, readonly status = 400) {
     super(message);
@@ -38,11 +44,11 @@ export function apiError(error: unknown) {
         remoteProject: error.remoteProject,
         remoteUpdatedAt: error.remoteProject?.syncVersion ?? null,
       },
-    }, { status: error.status });
+    }, { status: error.status, headers: PRIVATE_NO_STORE_HEADERS });
   }
   if (error instanceof PublicApiError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json({ error: error.message }, { status: error.status, headers: PRIVATE_NO_STORE_HEADERS });
   }
   console.error('API request failed', error);
-  return NextResponse.json({ error: '伺服器暫時無法處理請求' }, { status: 500 });
+  return NextResponse.json({ error: '伺服器暫時無法處理請求' }, { status: 500, headers: PRIVATE_NO_STORE_HEADERS });
 }
