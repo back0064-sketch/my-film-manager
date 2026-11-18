@@ -39,7 +39,7 @@ it('從獨立 SQL 備份還原同一客戶的兩個專案，並逐支對帳', as
   const paidB = updateSettlementBatch(draftB, draftB.settlementBatches[0].id, { status: 'paid', invoiceNumber: 'B-10' }, now);
 
   const restoreSql = buildRestoreSql({
-    projects: [invoiceA, paidB].map((project) => ({ id: project.id, name: project.name, owner_id: ownerId, client_id: clientId, created_at: now, updated_at: now, project_data: project })),
+    projects: [invoiceA, paidB].map((project) => ({ id: project.id, name: project.name, owner_id: ownerId, client_id: clientId, updated_at: now, project_data: project })),
     clients: [{ id: clientId, owner_id: ownerId, name: "測試客戶's 公司", contact_name: null, contact_email: null, contact_phone: null, notes: '測試\n備註', created_at: now, updated_at: now }],
   });
   const db = new PGlite();

@@ -24,6 +24,7 @@ function mockServices({ wrongOwner = false, staleTail = false } = {}) {
         return new Response(null, { status: 204 });
       }
       expect(url.searchParams.get('owner_id')).toBe(`eq.${ownerId}`);
+      if (url.pathname.endsWith('/film_projects')) expect(url.searchParams.get('select')).not.toContain('created_at');
       if (url.searchParams.has('id') || url.pathname.endsWith('/clients')) return Response.json([]);
       return Response.json([{ id: 'project-1', name: '=原文', owner_id: wrongOwner ? foreignId : ownerId, client_id: null, project_data: null, updated_at: '2026-11-18' }]);
     }

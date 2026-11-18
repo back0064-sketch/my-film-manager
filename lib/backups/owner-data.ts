@@ -32,7 +32,7 @@ async function readOwnerRows<Row extends { id: string; owner_id: string | null }
 
 export async function readOwnerBackup(database: SupabaseClient, ownerId: string) {
   const [projects, clients] = await Promise.all([
-    readOwnerRows<ProjectRow & { created_at: string }>(database, 'film_projects', 'id, name, owner_id, client_id, created_at, updated_at, project_data', ownerId),
+    readOwnerRows<ProjectRow>(database, 'film_projects', 'id, name, owner_id, client_id, updated_at, project_data', ownerId),
     readOwnerRows<ClientRow>(database, 'clients', 'id, owner_id, name, contact_name, contact_email, contact_phone, notes, created_at, updated_at', ownerId),
   ]);
   const clientIds = new Set(clients.map((client) => client.id));
