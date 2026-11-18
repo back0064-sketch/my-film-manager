@@ -42,6 +42,7 @@ function mockServices({ wrongOwner = false, staleTail = false } = {}) {
       if (staleTail) tabs.get(1)?.push([foreignId, 'stale-project']);
       return Response.json({ valueRanges: titles.map((_, index) => ({ values: tabs.get(index) })) });
     }
+    expect(url.searchParams.get('fields')).toBe('sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))');
     return Response.json({ sheets: titles.map((title, sheetId) => ({ properties: { title, sheetId, gridProperties: { rowCount: 1000, columnCount: 26 } } })) });
   });
   vi.stubGlobal('fetch', fetchMock);

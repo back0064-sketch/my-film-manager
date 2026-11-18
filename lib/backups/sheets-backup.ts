@@ -43,7 +43,7 @@ async function writeAndVerifyWorkbook(spreadsheetId: string, token: string, work
     { title: '任務', lastColumn: 'W', rows: workbook.tasks },
     { title: '月結款項', lastColumn: 'P', rows: workbook.settlements },
   ];
-  const { sheets } = await sheetsRequest<{ sheets: GridSheet[] }>(spreadsheetId, '?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount))', token);
+  const { sheets } = await sheetsRequest<{ sheets: GridSheet[] }>(spreadsheetId, '?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))', token);
   const requests = tabs.flatMap(({ title, rows }) => {
     const sheet = sheets.find(({ properties }) => properties.title === title)?.properties;
     const grid = sheet?.gridProperties;
