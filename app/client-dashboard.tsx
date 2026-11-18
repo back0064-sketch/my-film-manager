@@ -39,6 +39,7 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cloudStatus, setCloudStatus] = useState<'checking' | 'current' | 'unavailable'>('checking');
   const [newClientName, setNewClientName] = useState('');
   const [newClientContact, setNewClientContact] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
@@ -74,7 +75,6 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
       const localProjects = [...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
       if (!cancelled && localProjects.length > 0) {
         setProjects(localProjects);
-        writeDashboardCache(localStorage, localProjects, cacheKey);
         setLoading(false);
       }
       try {
@@ -85,13 +85,14 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
           const nextProjects = [...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
           setProjects(nextProjects);
           writeDashboardCache(localStorage, nextProjects, cacheKey);
+          setCloudStatus('current');
           setLoading(false);
         }
       } catch {
         if (!cancelled) {
           const nextProjects = [...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
           setProjects(nextProjects);
-          writeDashboardCache(localStorage, nextProjects, cacheKey);
+          setCloudStatus('unavailable');
           setLoading(false);
         }
       }
@@ -101,8 +102,8 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
   }, [userId]);
 
   useEffect(() => {
-    if (!loading) writeDashboardCache(localStorage, projects, dashboardCacheKey(userId));
-  }, [loading, projects, userId]);
+    if (!loading && cloudStatus === 'current') writeDashboardCache(localStorage, projects, dashboardCacheKey(userId));
+  }, [cloudStatus, loading, projects, userId]);
 
   useEffect(() => () => { if (deletionTimer.current) window.clearTimeout(deletionTimer.current); }, []);
 
@@ -214,7 +215,10 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
       <form onSubmit={(event) => { event.preventDefault(); void createProject(); }} className="rounded-2xl border border-indigo-900/70 bg-slate-900/60 p-5"><h2 className="font-bold">建立客戶專案</h2><div className="mt-4 flex flex-col gap-3 sm:flex-row"><select value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)} className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm"><option value="">未分類客戶</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="輸入新的影視專案名稱" className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm" /><button className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold hover:bg-indigo-500">建立</button></div></form></section>
     <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4"><label className="block text-sm font-bold">新專案工作模板<select value={selectedProjectType} onChange={(event) => setSelectedProjectType(event.target.value as ProjectType)} className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm">{PROJECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.name}｜{type.description}</option>)}</select></label><p className="mt-2 text-xs text-slate-500">模板會預先設定腳本、拍攝、後製的任務狀態；建立後仍可依案件調整。</p></section>
     <section aria-label="大廳摘要" className="mb-6 grid grid-cols-2 gap-3"><DashboardMetric label="專案數" value={projects.length} /><DashboardMetric label="客戶數" value={clients.length} /></section>
-    <WorkCommandPanel projects={projects} showAmounts={showFinancialAmounts} onOpenProject={onOpenProject} />
+    {!loading && cloudStatus !== 'current' && <p role="status" className="mb-4 rounded-xl border border-amber-900/70 p-3 text-sm text-amber-300">
+      {cloudStatus === 'checking' ? '正在核對大廳的雲端版本。' : '大廳目前無法取得雲端資料，清單與金額可能未更新。'}
+    </p>}
+    <WorkCommandPanel projects={projects} totalReceivable={totalReceivable} showAmounts={showFinancialAmounts} onOpenProject={onOpenProject} />
     <label className="mb-6 block text-sm font-bold">搜尋客戶或專案<input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="輸入客戶、聯絡人或專案名稱" className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-base font-normal" /></label>
     <section aria-label="財務隱私控制" className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold">財務摘要</h2><p className="mt-1 text-xs text-slate-500">金額預設隱藏，避免開啟大廳時被旁人看到。</p></div><button type="button" aria-pressed={showFinancialAmounts} onClick={() => setShowFinancialAmounts((current) => !current)} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-bold text-slate-200 hover:bg-slate-800">{showFinancialAmounts ? '隱藏金額' : '顯示金額'}</button></div>{showFinancialAmounts ? <div className="mt-4 grid grid-cols-2 gap-3"><DashboardMetric label="待收款" value={totalReceivable} tone="text-amber-300" /><DashboardMetric label="待支付" value={totalPayable} tone="text-rose-300" /></div> : <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/50 px-4 py-5 text-center text-sm tracking-[0.3em] text-slate-500" aria-label="財務金額已隱藏">••••••</div>}</section>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-bold">客戶與專案</h2><span className="text-xs text-slate-500">{clients.length} 位客戶 · {projects.length} 個專案</span></div>

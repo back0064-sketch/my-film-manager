@@ -4,7 +4,7 @@ import { cleanProjectData } from '@/lib/project-data';
 import { requireUser } from '@/lib/auth/session';
 import { ProjectConflictError, PublicApiError } from '@/lib/middlewares/api-handler';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
-import { buildNormalizedProjectList, NormalizedBatchSummaryRow, NormalizedTaskSummaryRow, ProjectListMetadataRow } from '@/lib/projects/normalized-summary';
+import { buildNormalizedProjectList, projectListClientName, projectsNeedingSource, type ProjectListMetadataRow } from '@/lib/projects/normalized-summary';
 import { buildReceivableItems, buildWorkCommandItems } from '@/lib/projects/work-command';
 import * as repository from '@/lib/repositories/project-repository';
 import { Client, FilmProjectRow, ProjectData, ProjectListItem } from '@/types/project';
@@ -51,27 +51,35 @@ function clientInput(payload: unknown) {
 
 export async function listProjects(): Promise<ProjectListItem[]> {
   const user = await requireUser();
-  // Once the additive normalization migration is present, the lobby avoids
-  // transferring the large JSONB document for every project. If the migration
-  // is still pending, retain the old path so existing deployments keep working.
   const metadataResult = await repository.findProjectListMetadata(user.id);
-  if (!metadataResult.error) {
-    const normalized = await repository.findNormalizedProjectSummary(user.id);
-    if (!normalized.tasks.error && !normalized.batches.error) {
-      return buildNormalizedProjectList(
-        (metadataResult.data ?? []) as ProjectListMetadataRow[],
-        (normalized.tasks.data ?? []) as NormalizedTaskSummaryRow[],
-        (normalized.batches.data ?? []) as NormalizedBatchSummaryRow[],
-      );
-    }
-  }
+  if (metadataResult.error || metadataResult.count !== metadataResult.data.length) return listProjectsFromSource(user.id);
+  if (!metadataResult.data.length) return [];
 
-  const { data, error } = await repository.findAllProjects(user.id);
+  const { tasks, batches } = await repository.findNormalizedProjectSummary(user.id);
+  // PostgREST can return a successful, capped result; partial summaries misstate balances.
+  if (tasks.error || batches.error || tasks.count !== tasks.data.length || batches.count !== batches.data.length) return listProjectsFromSource(user.id);
+
+  const stale = new Set(projectsNeedingSource(metadataResult.data, tasks.data, batches.data));
+  const fresh = buildNormalizedProjectList(metadataResult.data.filter((project) => !stale.has(project.id)), tasks.data, batches.data);
+  if (!stale.size) return fresh;
+  if (stale.size === metadataResult.data.length || stale.size > 50) return listProjectsFromSource(user.id);
+
+  const updated = await listProjectsFromSource(user.id, [...stale]);
+  return sortProjectList([...fresh, ...updated]);
+}
+
+function sortProjectList(projects: ProjectListItem[]) {
+  return projects.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+}
+
+async function listProjectsFromSource(ownerId: string, projectIds?: string[]) {
+  const { data, error } = await repository.findAllProjects(ownerId, projectIds);
   if (error) throw error;
-  return ((data ?? []) as (FilmProjectRow & { client_id: string | null; clients: { name: string }[] | null })[]).map(({ id, name, client_id, clients, updated_at, project_data }) => {
+  return sortProjectList(data.map((row: FilmProjectRow & ProjectListMetadataRow) => {
+    const { id, name, client_id, updated_at, project_data } = row;
     const project = cleanProjectData(project_data, id);
     const { outstandingPayable, outstandingReceivable } = project ? projectFinancialSummary(project) : { outstandingPayable: 0, outstandingReceivable: 0 };
-    const clientName = clients?.[0]?.name ?? null;
+    const clientName = projectListClientName(row);
     return {
       id,
       name,
@@ -85,7 +93,7 @@ export async function listProjects(): Promise<ProjectListItem[]> {
       workCommandItems: project ? buildWorkCommandItems(project).map((item) => ({ ...item, clientName })) : [],
       receivableItems: project ? buildReceivableItems(project).map((item) => ({ ...item, clientName })) : [],
     };
-  });
+  }));
 }
 
 function mapClient(row: { id: string; name: string; contact_name: string | null; contact_email: string | null; contact_phone: string | null; notes: string | null; created_at: string; updated_at: string }): Client {

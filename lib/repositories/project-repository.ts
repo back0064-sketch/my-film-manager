@@ -4,18 +4,31 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Client, FilmProjectRow, ProjectData } from '@/types/project';
 import { NormalizedBatchSummaryRow, NormalizedTaskSummaryRow, ProjectListMetadataRow } from '@/lib/projects/normalized-summary';
 
-export async function findAllProjects(ownerId: string) {
+export async function findAllProjects(ownerId: string, projectIds?: string[]) {
   const database = await createServerSupabaseClient();
-  return database.from('film_projects').select('id, name, client_id, updated_at, project_data, clients(name)').eq('owner_id', ownerId).order('updated_at', { ascending: false });
+  const rows: (FilmProjectRow & ProjectListMetadataRow)[] = [];
+  let lastId: string | undefined;
+  for (;;) {
+    let query = database.from('film_projects').select('id, name, client_id, updated_at, project_data, clients(name)', { count: 'exact' })
+      .eq('owner_id', ownerId).order('id').limit(200);
+    if (projectIds) query = query.in('id', projectIds);
+    if (lastId) query = query.gt('id', lastId);
+    const { data, error, count } = await query.returns<typeof rows>();
+    if (error) return { data: null, error };
+    if (!data.length) return { data: rows, error: null };
+    rows.push(...data);
+    if (count === data.length) return { data: rows, error: null };
+    lastId = data.at(-1)!.id;
+  }
 }
 
 export async function findProjectListMetadata(ownerId: string) {
   const database = await createServerSupabaseClient();
   return database
     .from('film_projects')
-    .select('id, name, client_id, updated_at, clients(name)')
+    .select('id, name, client_id, updated_at, payload_version:project_data->>syncVersion, clients(name)', { count: 'exact' })
     .eq('owner_id', ownerId)
-    .order('updated_at', { ascending: false }) as unknown as PromiseLike<{ data: ProjectListMetadataRow[] | null; error: unknown }>;
+    .order('updated_at', { ascending: false }).returns<ProjectListMetadataRow[]>();
 }
 
 export async function findNormalizedProjectSummary(ownerId: string) {
@@ -23,17 +36,14 @@ export async function findNormalizedProjectSummary(ownerId: string) {
   const [tasks, batches] = await Promise.all([
     database
       .from('project_tasks')
-      .select('project_id, task_id, module_id, title, status, is_completed, due_date, transaction_type, amount, is_paid, ready_for_collection, invoice_number, transaction_date, updated_at:source_updated_at, unit_price, delivered_at, settlement_batch_id, archived_at')
-      .eq('owner_id', ownerId),
+      .select('project_id, task_id, module_id, title, status, is_completed, due_date, transaction_type, amount, is_paid, ready_for_collection, invoice_number, transaction_date, updated_at:source_updated_at, unit_price, delivered_at, settlement_batch_id, archived_at, source_project_updated_at', { count: 'exact' })
+      .eq('owner_id', ownerId).returns<NormalizedTaskSummaryRow[]>(),
     database
       .from('project_settlement_batches')
-      .select('project_id, batch_id, month, total, status, created_at_source, invoice_date, invoice_number, due_date, updated_at:source_project_updated_at')
-      .eq('owner_id', ownerId),
+      .select('project_id, batch_id, month, total, status, created_at_source, invoice_date, invoice_number, due_date, updated_at:source_project_updated_at, source_project_updated_at', { count: 'exact' })
+      .eq('owner_id', ownerId).returns<NormalizedBatchSummaryRow[]>(),
   ]);
-  return {
-    tasks: tasks as unknown as { data: NormalizedTaskSummaryRow[] | null; error: unknown },
-    batches: batches as unknown as { data: NormalizedBatchSummaryRow[] | null; error: unknown },
-  };
+  return { tasks, batches };
 }
 
 export async function assignProjectClient(id: string, clientId: string | null, ownerId: string) {

@@ -1,4 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
+import { projectCacheKey } from '../lib/client/project-cache';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const clientId = '22222222-2222-4222-8222-222222222222';
@@ -30,6 +31,7 @@ const project = {
 };
 
 async function mockApi(page: Page) {
+  await page.clock.setFixedTime(new Date('2026-11-18T02:00:00Z'));
   await page.addInitScript(({ projectFixture, projectList, clientList, fixtureProjectId, fixtureClientId, version }) => {
     const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
     const originalFetch = window.fetch.bind(window);
@@ -37,6 +39,7 @@ async function mockApi(page: Page) {
       const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
       const method = input instanceof Request ? input.method : init?.method ?? 'GET';
       if (url.pathname === '/api/auth/session') return json({ id: 'user-1', email: 'tester@example.com' });
+      if (url.pathname === '/api/auth/mfa') return json({ currentLevel: 'aal1', nextLevel: 'aal1', factors: [] });
       if (url.pathname === '/api/clients' && method === 'GET') return json(clientList);
       if (url.pathname === `/api/clients/${fixtureClientId}` && method === 'DELETE') {
         (window as typeof window & { __deletedClient?: boolean }).__deletedClient = true;
@@ -143,19 +146,20 @@ test('長期專案可將當月已交付影片結案並從看板封存', async ({
 });
 
 test('雲端較慢時仍會先顯示本機專案與快取內容', async ({ page }) => {
-  await page.addInitScript(({ projectFixture, fixtureProjectId }) => {
-    localStorage.setItem(fixtureProjectId, JSON.stringify(projectFixture));
+  await page.addInitScript(({ projectFixture, fixtureProjectId, cacheKey }) => {
+    localStorage.setItem(cacheKey, JSON.stringify(projectFixture));
     const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
     window.fetch = (async (input: RequestInfo | URL) => {
       const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
       if (url.pathname === '/api/auth/session') return json({ id: 'user-1', email: 'tester@example.com' });
+      if (url.pathname === '/api/auth/mfa') return json({ currentLevel: 'aal1', nextLevel: 'aal1', factors: [] });
       await new Promise((resolve) => setTimeout(resolve, 2000));
       if (url.pathname === '/api/projects') return json([]);
       if (url.pathname === '/api/clients') return json([]);
       if (url.pathname === `/api/projects/${fixtureProjectId}`) return json(projectFixture);
       return json({ error: 'not mocked' });
     }) as typeof window.fetch;
-  }, { projectFixture: project, fixtureProjectId: projectId });
+  }, { projectFixture: project, fixtureProjectId: projectId, cacheKey: projectCacheKey('user-1', projectId) });
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: project.name })).toBeVisible({ timeout: 1000 });

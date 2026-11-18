@@ -24,6 +24,7 @@ export interface NormalizedTaskSummaryRow {
   delivered_at: string | null;
   settlement_batch_id: string | null;
   archived_at: string | null;
+  source_project_updated_at: string | null;
 }
 
 export interface NormalizedBatchSummaryRow {
@@ -37,6 +38,7 @@ export interface NormalizedBatchSummaryRow {
   invoice_number: string | null;
   due_date: string | null;
   updated_at: string | null;
+  source_project_updated_at: string | null;
 }
 
 export interface ProjectListMetadataRow {
@@ -44,6 +46,7 @@ export interface ProjectListMetadataRow {
   name: string;
   client_id: string | null;
   updated_at: string;
+  payload_version?: string | null;
   clients?: { name: string }[] | { name: string } | null;
 }
 
@@ -78,7 +81,7 @@ function asWorkItem(row: NormalizedTaskSummaryRow, project: ProjectListMetadataR
     taskId: row.task_id,
     projectId: project.id,
     projectName: project.name,
-    clientName: clientName(project),
+    clientName: projectListClientName(project),
     title: row.title,
     status: row.status,
     moduleId: moduleId(row.module_id),
@@ -87,9 +90,32 @@ function asWorkItem(row: NormalizedTaskSummaryRow, project: ProjectListMetadataR
   };
 }
 
-function clientName(project: ProjectListMetadataRow) {
+export function projectListClientName(project: ProjectListMetadataRow) {
   if (Array.isArray(project.clients)) return project.clients[0]?.name ?? null;
   return project.clients?.name ?? null;
+}
+
+export function projectsNeedingSource(
+  metadata: ProjectListMetadataRow[],
+  tasks: NormalizedTaskSummaryRow[],
+  batches: NormalizedBatchSummaryRow[],
+) {
+  const versions = new Map<string, string | null>();
+  for (const row of [...tasks, ...batches]) {
+    const version = row.source_project_updated_at;
+    if (!versions.has(row.project_id)) versions.set(row.project_id, version);
+    else if (versions.get(row.project_id) !== version) versions.set(row.project_id, null);
+  }
+  // The detail view converts legacy monthly settlements to finance entries.
+  // Use that same conversion when projections still contain legacy batches.
+  for (const batch of batches) {
+    if (batch.batch_id.startsWith('legacy:')) versions.set(batch.project_id, null);
+  }
+  // Older payloads and empty projections also need the source reader, which
+  // applies the same data cleanup as the project detail view.
+  return metadata.filter((project) => versions.get(project.id) !== project.updated_at
+    || !project.payload_version || Date.parse(project.payload_version) !== Date.parse(project.updated_at),
+  ).map((project) => project.id);
 }
 
 export function buildNormalizedProjectList(
@@ -134,7 +160,7 @@ export function buildNormalizedProjectList(
           id: `batch:${batch.batch_id}`,
           projectId: project.id,
           projectName: project.name,
-          clientName: clientName(project),
+          clientName: projectListClientName(project),
           title: `${batch.month} 月結`,
           amount: amount(batch.total),
           dueDate: batch.due_date || undefined,
@@ -153,7 +179,7 @@ export function buildNormalizedProjectList(
           id: `income:${task.task_id}`,
           projectId: project.id,
           projectName: project.name,
-          clientName: clientName(project),
+          clientName: projectListClientName(project),
           title: task.title,
           amount: amount(task.amount),
           dueDate: task.due_date || undefined,
@@ -168,7 +194,7 @@ export function buildNormalizedProjectList(
       id: project.id,
       name: project.name,
       clientId: project.client_id,
-      clientName: clientName(project),
+      clientName: projectListClientName(project),
       updated_at: project.updated_at,
       taskCount: projectTasks.length,
       outstandingAmount: outstandingPayable,
