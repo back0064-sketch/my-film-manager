@@ -4,6 +4,7 @@ import {
   SettlementBatchStatus,
   Task,
 } from "@/types/project";
+import { taipeiToday } from "@/lib/projects/work-command";
 
 function finalStatus(project: ProjectData, task: Task) {
   return project.moduleConfigs
@@ -20,15 +21,36 @@ function linkedIncome(project: ProjectData, task: Task) {
   );
 }
 
-export function settlementCandidates(project: ProjectData, month: string) {
+export function taipeiDeliveryDate(value?: string) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))?$/i.test(value)) return '';
+  const day = value.slice(0, 10);
+  const calendarDate = new Date(`${day}T00:00:00Z`);
+  if (!Number.isFinite(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== day) return '';
+  if (value === day) return day;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return taipeiToday(date);
+}
+
+function unsettledDeliveries(project: ProjectData) {
   return project.tasks.filter(
     (task) =>
       task.moduleId !== "Finance" &&
       !task.archivedAt &&
       !task.settlementBatchId &&
-      task.status === finalStatus(project, task) &&
-      (!task.deliveredAt || task.deliveredAt.startsWith(month)),
+      task.status === finalStatus(project, task),
   );
+}
+
+export function settlementCandidates(project: ProjectData, month: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return [];
+  return unsettledDeliveries(project).filter((task): task is Task & { deliveredAt: string } =>
+    taipeiDeliveryDate(task.deliveredAt).slice(0, 7) === month,
+  );
+}
+
+export function deliveriesMissingDate(project: ProjectData) {
+  return unsettledDeliveries(project).filter((task) => !taipeiDeliveryDate(task.deliveredAt));
 }
 
 export function taskSettlementPrice(project: ProjectData, task: Task) {
@@ -58,7 +80,7 @@ export function closeSettlementMonth(
     taskId: task.id,
     title: task.title,
     unitPrice: taskSettlementPrice(project, task),
-    deliveredAt: task.deliveredAt ?? `${month}-01T00:00:00.000Z`,
+    deliveredAt: task.deliveredAt,
   }));
   const items = [...(current?.items ?? []), ...newItems];
   const subtotal = items.reduce((sum, item) => sum + item.unitPrice, 0);
@@ -86,7 +108,6 @@ export function closeSettlementMonth(
       if (candidateIds.has(task.id)) {
         return {
           ...task,
-          deliveredAt: task.deliveredAt ?? `${month}-01T00:00:00.000Z`,
           settlementBatchId: batchId,
           archivedAt: now,
           updatedAt: now,

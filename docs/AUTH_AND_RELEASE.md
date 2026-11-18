@@ -32,7 +32,10 @@
 
 ## 備份及可用性
 
-既有 Google 試算表匯出維持單向備份。尚需實際取得一份備份並在隔離環境還原、核對筆數及財務加總，才算還原演練完成。Free heartbeat 不保證免於暫停；升級 Pro 涉及訂閱費用，需由持有人決定與執行。
+- 試算表每天只同步 `AUTH_OWNER_ID` 的專案與客戶，寫入時同步清理舊列，再回讀比對。啟用後核對試算表筆數及擁有者，另外確認舊版本的存取權限。
+- 大廳的「下載營運備份」會下載一份含時間戳的 SQL，請存到只有帳號持有人可讀取的位置。還原演練先在隔離資料庫建立對應 UUID 的使用者並套用 `supabase/schema.sql`。執行 `alter table public.film_projects alter column id type text using id::text;` 以容納舊版文字專案 ID，再執行下載的 SQL。新建環境可接著套用正規化 migration 以重建任務和月結摘要。核對客戶、專案、影片、每期金額與未收款狀態。這份營運備份的範圍為客戶與專案資料，帳號、憑證與資料庫設定需另行準備。
+- 每日備份查核於台北時間 12:37 從 GitHub Actions 執行，檢查當天是否有完成回讀的備份。上線後，在 Vercel Production 及 GitHub Actions 設定相同的 `BACKUP_MONITOR_SECRET`（獨立於 `CRON_SECRET`），並在 GitHub 設定 `BACKUP_MONITOR_ENABLED=true`。手動執行一次「每日備份查核」驗證上線設定，並確認帳號有開啟 GitHub Actions 失敗通知。
+- Free heartbeat 不保證免於暫停；升級 Pro 涉及訂閱費用，需由持有人決定與執行。
 
 ## 回復
 

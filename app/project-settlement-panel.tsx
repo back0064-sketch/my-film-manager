@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { settlementCandidates, taskSettlementPrice } from '@/lib/projects/settlement-logic';
+import { deliveriesMissingDate, settlementCandidates, taipeiDeliveryDate, taskSettlementPrice } from '@/lib/projects/settlement-logic';
 import { ProjectData, SettlementBatch } from '@/types/project';
 
 type Props = {
@@ -10,15 +10,17 @@ type Props = {
   closeMonth: (month: string) => void;
   updateSettlementBatch: (id: string, updates: Partial<Pick<SettlementBatch, 'adjustment' | 'invoiceDate' | 'invoiceNumber' | 'dueDate' | 'notes' | 'status'>>) => void;
   reopenSettlementBatch: (id: string) => void;
+  setDeliveryDate: (taskId: string, date: string) => void;
 };
 
 const money = (value: number) => `NT$ ${value.toLocaleString()}`;
 const statusLabel = { draft: '待請款', invoiced: '已請款', paid: '已收款' } as const;
-const taipeiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 7);
+const taipeiMonth = () => taipeiDeliveryDate(new Date().toISOString()).slice(0, 7);
 
-export function ProjectSettlementPanel({ project, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch }: Props) {
+export function ProjectSettlementPanel({ project, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, setDeliveryDate }: Props) {
   const [month, setMonth] = useState(taipeiMonth);
   const candidates = settlementCandidates(project, month);
+  const pendingDates = deliveriesMissingDate(project);
   const candidateTotal = candidates.reduce((sum, task) => sum + taskSettlementPrice(project, task), 0);
   const batches = [...project.settlementBatches].sort((a, b) => b.month.localeCompare(a.month));
   const currentBatch = batches.find((batch) => batch.month === month);
@@ -36,6 +38,19 @@ export function ProjectSettlementPanel({ project, updateDefaultUnitPrice, closeM
       {candidates.length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{candidates.map((task) => <div key={task.id} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs"><p className="truncate font-semibold">{task.title}</p><p className="mt-1 text-slate-400">{money(taskSettlementPrice(project, task))}</p></div>)}</div>}
     </div>
 
+    {pendingDates.length > 0 && <details className="mt-4 rounded-xl border border-amber-900/70 p-4" open>
+      <summary className="cursor-pointer text-sm font-semibold text-amber-300">待確認交付日期 · {pendingDates.length} 支</summary>
+      <p className="mt-2 text-xs text-slate-400">填入實際交付日期後，影片會列入對應的台北時間月份。</p>
+      <div className="mt-3 space-y-2">{pendingDates.map((task) => <form key={task.id} className="flex flex-wrap items-center gap-2 text-sm" onSubmit={(event) => {
+        event.preventDefault();
+        const date = new FormData(event.currentTarget).get('deliveredAt');
+        if (typeof date === 'string' && taipeiDeliveryDate(date)) setDeliveryDate(task.id, date);
+      }}>
+        <span>{task.title}</span>
+        <input type="date" name="deliveredAt" required aria-label={`${task.title}的交付日期`} className="ml-auto rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs" />
+        <button className="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">儲存日期</button>
+      </form>)}</div>
+    </details>}
     <div className="mt-5"><h3 className="text-sm font-bold">月份紀錄</h3>{batches.length === 0 ? <p className="mt-3 rounded-lg border border-dashed border-slate-800 py-6 text-center text-xs text-slate-500">尚未建立月結紀錄</p> : <div className="mt-3 space-y-3">{batches.map((batch) => <article key={batch.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-bold">{batch.month} · {batch.items.length} 支</p><p className="mt-1 text-lg font-black text-emerald-400">{money(batch.total)}</p></div><select value={batch.status} onChange={(event) => updateSettlementBatch(batch.id, { status: event.target.value as SettlementBatch['status'] })} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"><option value="draft">待請款</option><option value="invoiced">已請款</option><option value="paid">已收款</option></select></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="text-xs text-slate-400">調整金額<input type="number" defaultValue={batch.adjustment} onBlur={(event) => updateSettlementBatch(batch.id, { adjustment: Number(event.target.value) || 0 })} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-100" /></label><label className="text-xs text-slate-400">請款編號<input defaultValue={batch.invoiceNumber ?? ''} onBlur={(event) => updateSettlementBatch(batch.id, { invoiceNumber: event.target.value.trim() || undefined })} placeholder="例如：INV-2026-09" className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-100" /></label><label className="text-xs text-slate-400">請款日<input type="date" value={batch.invoiceDate ?? ''} onChange={(event) => updateSettlementBatch(batch.id, { invoiceDate: event.target.value || undefined })} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-100" /></label><label className="text-xs text-slate-400">付款期限<input type="date" value={batch.dueDate ?? ''} onChange={(event) => updateSettlementBatch(batch.id, { dueDate: event.target.value || undefined })} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-100" /></label></div><details className="mt-3 text-xs text-slate-400"><summary className="cursor-pointer">查看交付明細</summary><div className="mt-2 space-y-1">{batch.items.map((item) => <p key={item.taskId} className="flex justify-between gap-3"><span className="truncate">{item.title}</span><span className="shrink-0">{money(item.unitPrice)}</span></p>)}</div></details>{batch.status === 'draft' && <button onClick={() => window.confirm(`撤銷 ${batch.month} 月結並把影片放回看板嗎？`) && reopenSettlementBatch(batch.id)} className="mt-4 text-xs text-rose-400 hover:text-rose-300">撤銷月結</button>}</article>)}</div>}</div>
   </section>;
 }

@@ -80,7 +80,7 @@ export function buildBackupWorkbook(projects: ProjectRow[], clients: ClientRow[]
 
   return {
     status: [
-      ['影視製片控制台 Supabase 自動備份', ''], ['', ''], ['項目', '內容'], ['狀態', '同步成功'],
+      ['影視製片控制台 Supabase 自動備份', ''], ['', ''], ['項目', '內容'], ['狀態', '資料已寫入'],
       ['最後同步時間', syncedAt], ['Supabase 專案', 'xmbpkmxrhxobqixqdyep'], ['同步方向', 'Supabase → Google 試算表'],
       ['專案筆數', projects.length], ['客戶筆數', clients.length], ['任務筆數', taskRows.length],
       ['月結款項筆數', allSettlementRows.length], ['', ''],

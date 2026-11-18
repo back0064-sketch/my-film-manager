@@ -1,0 +1,27 @@
+name: 每日備份查核
+
+on:
+  schedule:
+    - cron: '37 4 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main' && vars.BACKUP_MONITOR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 檢查今天是否完成回讀驗證
+        env:
+          BACKUP_MONITOR_SECRET: ${{ secrets.BACKUP_MONITOR_SECRET }}
+        run: |
+          test -n "$BACKUP_MONITOR_SECRET"
+          status=$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' \
+            --header "Authorization: Bearer $BACKUP_MONITOR_SECRET" \
+            https://my-film-manager.vercel.app/api/backups/health)
+          if [ "$status" != 204 ]; then
+            echo "::error::今日未確認可讀備份成功（HTTP $status），請查看 Vercel 的備份執行紀錄。"
+            exit 1
+          fi

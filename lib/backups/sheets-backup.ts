@@ -1,7 +1,8 @@
 import 'server-only';
 
 import { JWT } from 'google-auth-library';
-import { buildBackupWorkbook, type ClientRow, type ProjectRow } from '@/lib/backups/sheets-data';
+import { buildBackupWorkbook, type BackupWorkbook } from '@/lib/backups/sheets-data';
+import { OWNER_SHEETS_BACKUP_KIND, readOwnerBackup, requireBackupOwner } from '@/lib/backups/owner-data';
 import { getBackupConfig } from '@/lib/config/env';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 
@@ -18,84 +19,100 @@ async function getAccessToken(email: string, privateKey: string) {
   return result.token;
 }
 
-async function sheetsRequest(spreadsheetId: string, path: string, accessToken: string, body: unknown) {
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/${path}`, {
-    method: 'POST',
+async function sheetsRequest<Result>(spreadsheetId: string, path: string, accessToken: string, body?: unknown): Promise<Result> {
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}${path}`, {
+    method: body ? 'POST' : 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    cache: 'no-store',
   });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Google Sheets 同步失敗（${response.status}）：${detail.slice(0, 300)}`);
+  if (!response.ok) throw new Error(`Google Sheets 同步失敗（${response.status}）`);
+  return response.json();
+}
+
+type GridSheet = { properties: { sheetId: number; title: string; gridProperties?: { rowCount: number; columnCount: number } } };
+
+async function writeAndVerifyWorkbook(spreadsheetId: string, token: string, workbook: BackupWorkbook) {
+  const tabs = [
+    { title: '同步狀態', lastColumn: 'B', rows: workbook.status },
+    { title: '專案', lastColumn: 'K', rows: workbook.projects },
+    { title: '客戶', lastColumn: 'I', rows: workbook.clients },
+    { title: '任務', lastColumn: 'W', rows: workbook.tasks },
+    { title: '月結款項', lastColumn: 'P', rows: workbook.settlements },
+  ];
+  const { sheets } = await sheetsRequest<{ sheets: GridSheet[] }>(spreadsheetId, '?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount))', token);
+  const requests = tabs.flatMap(({ title, rows }) => {
+    const sheet = sheets.find(({ properties }) => properties.title === title)?.properties;
+    const grid = sheet?.gridProperties;
+    const columnCount = rows[0].length;
+    if (!sheet || !grid || grid.columnCount < columnCount) throw new Error(`Google 試算表分頁規格不符：${title}`);
+
+    const grow = rows.length > grid.rowCount
+      ? [{ appendDimension: { sheetId: sheet.sheetId, dimension: 'ROWS', length: rows.length - grid.rowCount } }]
+      : [];
+    return [...grow, { updateCells: {
+      range: { sheetId: sheet.sheetId, startColumnIndex: 0, endColumnIndex: columnCount },
+      fields: 'userEnteredValue',
+      rows: rows.map((row) => ({ values: row.map((value) => ({ userEnteredValue:
+        typeof value === 'number' ? { numberValue: value } : { stringValue: String(value ?? '') },
+      })) })),
+    } }];
+  });
+  // Google 會以同一批次替換五個分頁的值，並清除寫入範圍剩餘的舊值。
+  await sheetsRequest(spreadsheetId, ':batchUpdate', token, { requests });
+
+  const query = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE' });
+  for (const tab of tabs) query.append('ranges', `'${tab.title}'!A:${tab.lastColumn}`);
+  const { valueRanges } = await sheetsRequest<{ valueRanges: { values?: unknown[][] }[] }>(spreadsheetId, `/values:batchGet?${query}`, token);
+  const trim = (rows: unknown[][]) => rows.map((row) => {
+    const populated = row.findLastIndex((value) => value !== '' && value != null);
+    return row.slice(0, populated + 1);
+  });
+  if (tabs.some((tab, index) => JSON.stringify(trim(valueRanges[index]?.values ?? [])) !== JSON.stringify(trim(tab.rows)))) {
+    throw new Error('Google 試算表回讀與匯出內容不符');
   }
 }
 
 export async function syncSupabaseToGoogleSheets() {
+  const ownerId = requireBackupOwner();
   const backupConfig = getBackupConfig();
   const database = createSupabaseServiceClient();
   let runId: string | undefined;
   const startedAt = new Date().toISOString();
 
-  const started = await database.from('backup_runs').insert({ kind: 'google_sheets', status: 'started', started_at: startedAt }).select('id').maybeSingle();
+  const started = await database.from('backup_runs').insert({ kind: OWNER_SHEETS_BACKUP_KIND, status: 'started', started_at: startedAt }).select('id').maybeSingle();
   if (!started.error) runId = started.data?.id;
   else if (!isMissingTableError(started.error)) console.warn('無法記錄備份開始狀態', started.error.message);
 
   try {
-    const [projectsResult, clientsResult] = await Promise.all([
-      database.from('film_projects').select('id, name, owner_id, client_id, updated_at, project_data').order('updated_at', { ascending: false }),
-      database.from('clients').select('id, owner_id, name, contact_name, contact_email, contact_phone, notes, created_at, updated_at').order('name'),
-    ]);
-    if (projectsResult.error) throw new Error(`讀取 Supabase 專案失敗：${projectsResult.error.message}`);
-    if (clientsResult.error) throw new Error(`讀取 Supabase 客戶失敗：${clientsResult.error.message}`);
+    const { projects, clients } = await readOwnerBackup(database, ownerId);
+    projects.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    clients.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
     const syncedAt = new Intl.DateTimeFormat('zh-TW', {
       dateStyle: 'medium',
       timeStyle: 'medium',
       timeZone: 'Asia/Taipei',
     }).format(new Date());
-    const workbook = buildBackupWorkbook(projectsResult.data as ProjectRow[], clientsResult.data as ClientRow[], syncedAt);
+    const workbook = buildBackupWorkbook(projects, clients, syncedAt);
     const accessToken = await getAccessToken(backupConfig.googleServiceAccountEmail, backupConfig.googleServiceAccountPrivateKey);
 
-    await sheetsRequest(backupConfig.googleSheetsSpreadsheetId, 'values:batchUpdate', accessToken, {
-      valueInputOption: 'RAW',
-      data: [
-        { range: "'同步狀態'!A1:B13", majorDimension: 'ROWS', values: workbook.status },
-        { range: "'專案'!A1", majorDimension: 'ROWS', values: workbook.projects },
-        { range: "'客戶'!A1", majorDimension: 'ROWS', values: workbook.clients },
-        { range: "'任務'!A1", majorDimension: 'ROWS', values: workbook.tasks },
-        { range: "'月結款項'!A1", majorDimension: 'ROWS', values: workbook.settlements },
-      ],
-    });
-
-    // 先寫入新快照，再清掉舊快照多出的尾列。若寫入中斷，既有備份仍完整，
-    // 不會出現「先清空、後寫入失敗」的空白試算表。
-    let cleanupWarning: string | undefined;
-    try {
-      await sheetsRequest(backupConfig.googleSheetsSpreadsheetId, 'values:batchClear', accessToken, {
-        ranges: [
-          `'專案'!A${workbook.projects.length + 1}:K`,
-          `'客戶'!A${workbook.clients.length + 1}:I`,
-          `'任務'!A${workbook.tasks.length + 1}:W`,
-          `'月結款項'!A${workbook.settlements.length + 1}:P`,
-        ],
-      });
-    } catch (error) {
-      cleanupWarning = error instanceof Error ? error.message.slice(0, 300) : '清理舊備份尾列失敗';
-      console.warn('Google Sheets 舊資料尾列清理失敗；新快照仍已寫入', cleanupWarning);
-    }
+    await writeAndVerifyWorkbook(backupConfig.googleSheetsSpreadsheetId, accessToken, workbook);
 
     const result = {
       syncedAt,
-      projects: projectsResult.data.length,
-      clients: clientsResult.data.length,
+      projects: projects.length,
+      clients: clients.length,
       tasks: workbook.tasks.length - 1,
       settlements: workbook.settlements.length - 1,
-      ...(cleanupWarning ? { cleanupWarning } : {}),
     };
-    if (runId) await database.from('backup_runs').update({ status: 'succeeded', completed_at: new Date().toISOString(), row_counts: result }).eq('id', runId);
+    if (runId) {
+      const completed = await database.from('backup_runs').update({ status: 'succeeded', completed_at: new Date().toISOString(), row_counts: result }).eq('id', runId);
+      if (completed.error) throw new Error('無法記錄已驗證的備份結果');
+    }
     return result;
   } catch (error) {
     if (runId) await database.from('backup_runs').update({ status: 'failed', completed_at: new Date().toISOString(), error_message: error instanceof Error ? error.message.slice(0, 500) : '未知錯誤' }).eq('id', runId);
