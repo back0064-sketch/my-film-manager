@@ -60,11 +60,14 @@ function receivableClass(urgency: ReturnType<typeof receivableUrgency>) {
       : 'border-slate-700 bg-slate-900 text-slate-300';
 }
 
-export function WorkCommandPanel({ projects, totalReceivable, showAmounts, onOpenProject }: {
+export function WorkCommandPanel({ projects, totalReceivable, totalPayable, showAmounts, onToggleAmounts, onOpenProject, financeOnly }: {
   projects: ProjectListItem[];
   totalReceivable: number;
+  totalPayable: number;
   showAmounts: boolean;
+  onToggleAmounts: () => void;
   onOpenProject: OpenProject;
+  financeOnly: boolean;
 }) {
   const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
   const [receivableFilter, setReceivableFilter] = useState<ReceivableFilter>('all');
@@ -112,30 +115,20 @@ export function WorkCommandPanel({ projects, totalReceivable, showAmounts, onOpe
   const visibleCount = taskFilter === 'closing' ? Math.min(closing.length, WORK_PREVIEW_LIMIT) : visibleTasks.length;
 
   return (
-    <section className="mb-6 rounded-2xl border border-indigo-800/70 bg-slate-900/60 p-4 sm:p-5" aria-label="每日工作指揮">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="font-bold">🧭 每日工作指揮</h2>
-          <p className="mt-1 text-xs text-slate-400">今天 {formatDate(today)}，先處理逾期與今天到期的項目。</p>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full border border-rose-700/60 bg-rose-950/30 px-2.5 py-1 text-rose-200">逾期 {counts.tasks.overdue}</span>
-          <span className="rounded-full border border-amber-700/60 bg-amber-950/30 px-2.5 py-1 text-amber-200">今天 {counts.tasks.today}</span>
-          <span className="rounded-full border border-slate-700 px-2.5 py-1 text-slate-300">待收 {counts.receivables.all} 筆</span>
-        </div>
-      </header>
-      {hasOlderSummary && <p className="mt-2 text-xs text-amber-200">摘要已跨日，期限數字依目前可讀項目計算。重新整理可更新完整清單。</p>}
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-4" aria-label="今日工作清單">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold">工作清單</h3>
-            <div className="flex flex-wrap gap-1" role="group" aria-label="工作篩選">
+    <section aria-label={financeOnly ? '追款工作區' : '每日工作指揮'}>
+      {hasOlderSummary && <p className="mb-4 text-xs text-amber-200">摘要已跨日，期限數字依目前可讀項目計算。重新整理可更新完整清單。</p>}
+      <div className={financeOnly ? '' : 'grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'}>
+        {!financeOnly && <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/55 p-4 sm:p-6" aria-label="今日工作清單">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">工作清單</h2>
+            <time dateTime={today} className="text-sm text-slate-400">{formatDate(today)}</time>
+          </div>
+          <div className="flex flex-wrap gap-1" role="group" aria-label="工作篩選">
               {taskFilters.map(([value, label]) => (
                 <FilterButton key={value} active={taskFilter === value} onClick={() => setTaskFilter(value)}>
-                  {label}{value === 'waiting' && ` ${counts.tasks.waiting}`}{value === 'closing' && ` ${closing.length}`}
+                  {label}{value !== 'all' && ` ${value === 'closing' ? closing.length : counts.tasks[value]}`}
                 </FilterButton>
               ))}
-            </div>
           </div>
           {taskFilter === 'closing' && <p className="mt-2 text-xs text-slate-400">顯示 7 日內及已過預計結案日的專案。</p>}
           {visibleCount === 0 ? (
@@ -161,11 +154,21 @@ export function WorkCommandPanel({ projects, totalReceivable, showAmounts, onOpe
             </div>
           )}
           {taskCount > visibleCount && <p className="mt-3 text-center text-xs text-slate-400">顯示 {visibleCount}／{taskCount} 項，依期限排序。</p>}
-        </section>
-        <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-4" aria-label="跨專案追款">
-          <div className="flex items-start justify-between gap-3">
-            <h3 className="text-sm font-bold">💸 跨專案追款</h3>
-            {showAmounts && <p className="text-right text-sm font-black text-emerald-300">待收 {money(totalReceivable)}</p>}
+        </section>}
+        <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/55 p-4 sm:p-6" aria-label="跨專案追款">
+          <div className="flex flex-wrap items-start justify-between gap-3" role="region" aria-label="財務隱私控制">
+            <div>
+              <h2 className="text-lg font-semibold">跨專案追款</h2>
+              {showAmounts ? (
+                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                  <span className="text-emerald-300">待收 {money(totalReceivable)}</span>
+                  <span className="text-slate-300">待付 {money(totalPayable)}</span>
+                </div>
+              ) : <p className="mt-1 text-xs text-slate-400">財務金額已隱藏</p>}
+            </div>
+            <button type="button" aria-pressed={showAmounts} onClick={onToggleAmounts} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800">
+              {showAmounts ? '隱藏金額' : '顯示金額'}
+            </button>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <span className="rounded-md bg-rose-950/40 px-2 py-1 text-rose-200">逾期 {counts.receivables.overdue}</span>
@@ -196,7 +199,7 @@ export function WorkCommandPanel({ projects, totalReceivable, showAmounts, onOpe
 
 function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} className={`rounded-md px-2 py-1.5 text-xs ${active ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+    <button type="button" aria-pressed={active} onClick={onClick} className={`min-h-9 rounded-md px-2 py-1.5 text-xs sm:min-h-8 ${active ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
       {children}
     </button>
   );
@@ -209,5 +212,5 @@ function CommandTask({ task, today, onOpenProject }: { task: WorkCommandItem; to
 
 function ReceivableRow({ item, today, showAmounts, onOpenProject }: { item: ReceivableItem; today: string; showAmounts: boolean; onOpenProject: OpenProject }) {
   const urgency = receivableUrgency(item, today);
-  return <button type="button" onClick={() => onOpenProject(item.projectId, { moduleId: 'Finance' })} className={`${rowClass} hover:border-amber-500`}><span className={`mt-0.5 shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold ${receivableClass(urgency)}`}>{receivableLabel(urgency)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-slate-500">{item.projectName} · {item.status === 'invoiced' ? '已請款' : item.awaitingDelivery ? '待交付' : '待請款'}{item.invoiceNumber ? ` · ${item.invoiceNumber}` : ''}</span></span><span className="shrink-0 text-right text-xs text-slate-400"><span className="block">{showAmounts ? money(item.amount) : '金額隱藏'}</span><span className="mt-1 block">{formatDate(item.dueDate)}</span></span></button>;
+  return <button type="button" onClick={() => onOpenProject(item.projectId, { moduleId: 'Finance' })} className={`${rowClass} hover:border-amber-500`}><span className={`mt-0.5 shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold ${receivableClass(urgency)}`}>{receivableLabel(urgency)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-slate-500">{item.projectName} · {item.status === 'invoiced' ? '已請款' : item.awaitingDelivery ? '待交付' : '待請款'}{item.invoiceNumber ? ` · ${item.invoiceNumber}` : ''}</span></span><span className="shrink-0 text-right text-xs text-slate-400">{showAmounts && <span className="mb-1 block">{money(item.amount)}</span>}<span className="block">{formatDate(item.dueDate)}</span></span></button>;
 }

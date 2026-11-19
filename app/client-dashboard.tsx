@@ -12,6 +12,26 @@ import { projectFinancialSummary } from '@/lib/projects/project-summary';
 import { buildProjectCommandSummary } from '@/lib/projects/work-command';
 import { Client, OpenProject, ProjectListItem, PROJECT_TYPES, ProjectType } from '@/types/project';
 
+const dashboardSections = [
+  { id: 'work', label: '工作台' },
+  { id: 'projects', label: '專案' },
+  { id: 'finance', label: '財務' },
+  { id: 'settings', label: '設定' },
+] as const;
+
+export type DashboardSection = (typeof dashboardSections)[number]['id'];
+
+const dashboardHeadings: Record<DashboardSection, string> = {
+  work: '工作台',
+  projects: '客戶與專案',
+  finance: '財務追款',
+  settings: '設定',
+};
+
+const inputClass = 'w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-base text-slate-100 focus:border-indigo-400 focus:outline-none';
+const secondaryButton = 'rounded-lg border border-slate-700 px-3 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-800';
+const primaryButton = 'rounded-lg bg-indigo-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50';
+
 const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 function projectListItem(project: ReturnType<typeof createProjectData>, updatedAt = new Date().toISOString()): ProjectListItem {
@@ -32,11 +52,16 @@ function projectListItem(project: ReturnType<typeof createProjectData>, updatedA
   };
 }
 
-function formatUpdatedAt(value: string) {
-  return new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-}
+const updatedAtFormat = new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' });
 
-export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }: { userId: string; userEmail?: string; onOpenProject: OpenProject; onSignOut: () => void }) {
+export function ClientDashboard({ userId, userEmail, section, onSectionChange, onOpenProject, onSignOut }: {
+  userId: string;
+  userEmail?: string;
+  section: DashboardSection;
+  onSectionChange: (section: DashboardSection) => void;
+  onOpenProject: OpenProject;
+  onSignOut: () => void;
+}) {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +71,8 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
   const [newProjectName, setNewProjectName] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedProjectType, setSelectedProjectType] = useState<ProjectType>('general');
+  const [createForm, setCreateForm] = useState<'client' | 'project' | null>(null);
+  const [settingsVisited, setSettingsVisited] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [archivePending, setArchivePending] = useState<string | null>(null);
@@ -118,6 +145,9 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
       setClients((current) => [...current, client].sort((a, b) => a.name.localeCompare(b.name, 'zh-TW')));
       setSelectedClientId(client.id);
       setNewClientName(''); setNewClientContact('');
+      setCreateForm(null);
+      setSearchQuery('');
+      setShowArchived(false);
       showToast(`已新增客戶「${client.name}」`, 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : '客戶建立失敗', 'error'); }
   };
@@ -227,37 +257,209 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase('zh-TW');
   const matches = useCallback((value?: string | null) => !normalizedQuery || value?.toLocaleLowerCase('zh-TW').includes(normalizedQuery), [normalizedQuery]);
   const visibleProjects = useMemo(() => projects.filter((project) => normalizedQuery || Boolean(project.archivedAt) === showArchived), [projects, normalizedQuery, showArchived]);
-  const clientGroups = useMemo(() => [...clients.map((client) => ({ id: client.id, name: client.name, contact: client.contactName, projects: visibleProjects.filter((project) => project.clientId === client.id && (matches(client.name) || matches(client.contactName) || matches(project.name))) })).filter((group) => matches(group.name) || matches(group.contact) || group.projects.length > 0), { id: 'unassigned', name: '未分類客戶', contact: undefined, projects: visibleProjects.filter((project) => !project.clientId && matches(project.name)) }], [clients, matches, visibleProjects]);
+  const clientGroups = useMemo(() => {
+    if (section !== 'projects') return [];
+    const groups = clients.map((client) => ({
+      id: client.id,
+      name: client.name,
+      contact: client.contactName,
+      projects: visibleProjects.filter((project) => project.clientId === client.id && (
+        matches(client.name) || matches(client.contactName) || matches(project.name)
+      )),
+    }));
+    return [...groups.filter((group) => group.projects.length || (!showArchived && (matches(group.name) || matches(group.contact)))), {
+      id: 'unassigned',
+      name: '未分類客戶',
+      contact: undefined,
+      projects: visibleProjects.filter((project) => !project.clientId && matches(project.name)),
+    }].filter((group) => group.id !== 'unassigned' || group.projects.length);
+  }, [clients, matches, section, showArchived, visibleProjects]);
   const totalReceivable = useMemo(() => projects.reduce((sum, project) => sum + project.outstandingReceivable, 0), [projects]);
   const totalPayable = useMemo(() => projects.reduce((sum, project) => sum + project.outstandingPayable, 0), [projects]);
 
-  return <main className="client-dashboard min-h-screen bg-slate-950 p-4 text-slate-100 sm:p-6 md:p-12"><div className="mx-auto max-w-6xl">
-    <header className="mb-7 flex flex-col gap-4 border-b border-slate-800 pb-6 sm:mb-10 sm:flex-row sm:items-start sm:justify-between sm:pb-7"><div><h1 className="text-3xl font-black text-indigo-400 sm:text-4xl">🎬 影視製片控制台</h1><p className="mt-2 text-sm text-slate-400">以客戶為主分類，管理專案、進度與成本</p></div><div className="text-left text-xs text-slate-400 sm:text-right"><p className="break-all">{userEmail}</p><button onClick={onSignOut} className="mt-2 text-rose-400 hover:text-rose-300">登出</button></div></header>
-    <MfaPanel />
-    <div className="mb-4 flex justify-end"><a href="/api/backups/download" download className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:text-white">下載營運備份</a></div>
-    <section className="mb-6 grid gap-4 lg:grid-cols-2"><form onSubmit={(event) => { event.preventDefault(); void createClient(); }} className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"><h2 className="font-bold">新增客戶</h2><div className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={newClientName} onChange={(event) => setNewClientName(event.target.value)} placeholder="客戶／公司名稱" className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm" /><input value={newClientContact} onChange={(event) => setNewClientContact(event.target.value)} placeholder="主要聯絡人（選填）" className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm" /><button className="rounded-xl bg-slate-700 px-5 py-3 text-sm font-bold hover:bg-slate-600">新增</button></div></form>
-      <form onSubmit={(event) => { event.preventDefault(); void createProject(); }} className="rounded-2xl border border-indigo-900/70 bg-slate-900/60 p-5"><h2 className="font-bold">建立客戶專案</h2><div className="mt-4 flex flex-col gap-3 sm:flex-row"><select value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)} className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm"><option value="">未分類客戶</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="輸入新的影視專案名稱" className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm" /><button className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold hover:bg-indigo-500">建立</button></div></form></section>
-    <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4"><label className="block text-sm font-bold">新專案工作模板<select value={selectedProjectType} onChange={(event) => setSelectedProjectType(event.target.value as ProjectType)} className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm">{PROJECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.name}｜{type.description}</option>)}</select></label><p className="mt-2 text-xs text-slate-500">模板會預先設定腳本、拍攝、後製的任務狀態；建立後仍可依案件調整。</p></section>
-    <section aria-label="大廳摘要" className="mb-6 grid grid-cols-2 gap-3"><DashboardMetric label="專案數" value={projects.length} /><DashboardMetric label="客戶數" value={clients.length} /></section>
-    {!loading && cloudStatus !== 'current' && <p role="status" className="mb-4 rounded-xl border border-amber-900/70 p-3 text-sm text-amber-300">
-      {cloudStatus === 'checking' ? '正在核對大廳的雲端版本。' : '大廳目前無法取得雲端資料，清單與金額可能未更新。'}
-    </p>}
-    <WorkCommandPanel projects={projects} totalReceivable={totalReceivable} showAmounts={showFinancialAmounts} onOpenProject={onOpenProject} />
-    <label className="mb-6 block text-sm font-bold">搜尋客戶或專案<input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="輸入客戶、聯絡人或專案名稱" className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-base font-normal" /></label>
-    {!normalizedQuery && <div aria-label="專案列表篩選" role="group" className="mb-4 flex gap-2">
-      <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className={`rounded-lg border px-4 py-2 text-sm ${!showArchived ? 'border-indigo-600 bg-indigo-950' : 'border-slate-700'}`}>進行中</button>
-      <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className={`rounded-lg border px-4 py-2 text-sm ${showArchived ? 'border-indigo-600 bg-indigo-950' : 'border-slate-700'}`}>已歸檔</button>
-    </div>}
-    <section aria-label="財務隱私控制" className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold">財務摘要</h2><p className="mt-1 text-xs text-slate-500">金額預設隱藏，避免開啟大廳時被旁人看到。</p></div><button type="button" aria-pressed={showFinancialAmounts} onClick={() => setShowFinancialAmounts((current) => !current)} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-bold text-slate-200 hover:bg-slate-800">{showFinancialAmounts ? '隱藏金額' : '顯示金額'}</button></div>{showFinancialAmounts ? <div className="mt-4 grid grid-cols-2 gap-3"><DashboardMetric label="待收款" value={totalReceivable} tone="text-amber-300" /><DashboardMetric label="待支付" value={totalPayable} tone="text-rose-300" /></div> : <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/50 px-4 py-5 text-center text-sm tracking-[0.3em] text-slate-500" aria-label="財務金額已隱藏">••••••</div>}</section>
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-bold">客戶與專案</h2><span className="text-xs text-slate-500">{clients.length} 位客戶 · {projects.length} 個專案</span></div>
-    {!loading && showArchived && !normalizedQuery && visibleProjects.length === 0 && <p className="mb-5 text-sm text-slate-400">目前沒有已歸檔的專案。</p>}
-    {loading ? <p className="py-12 text-center text-slate-500">資料載入中…</p> : <div className="space-y-5">{clientGroups.filter((group) => group.projects.length || (!showArchived && group.id !== 'unassigned' && matches(group.name))).map((group) => <section key={group.id} className="project-client-group rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><header className="mb-4 flex flex-col gap-3 border-b border-slate-800 pb-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h3 className="break-words font-bold text-indigo-300">{group.name}</h3>{group.contact && <p className="mt-1 text-xs text-slate-500">聯絡人：{group.contact}</p>}</div><div className="flex flex-wrap items-center gap-2"><span className="mr-1 text-xs text-slate-500">{group.projects.length} 個專案</span>{group.id !== 'unassigned' && <><button onClick={() => void editClient(group.id)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800">編輯</button><button onClick={() => void mergeClient(group.id)} className="rounded-lg border border-indigo-900/70 px-2.5 py-1.5 text-xs text-indigo-300 hover:bg-indigo-950/50">合併</button><button onClick={() => void deleteClient(group.id, group.name, projects.filter((project) => project.clientId === group.id).length)} aria-label={`刪除客戶 ${group.name}`} className="rounded-lg border border-rose-900/70 px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-950/50">刪除</button></>}</div></header>{group.projects.length === 0 ? <p className="py-5 text-center text-xs text-slate-600">尚無專案</p> : <div className="grid gap-3 md:grid-cols-2">{group.projects.map((project) => <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex cursor-pointer items-start justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-4 hover:border-indigo-500"><div className="min-w-0"><h4 className="break-words font-bold">{project.name}</h4>{project.archivedAt && <p className="mt-1 text-xs text-indigo-300">已歸檔</p>}<p className="mt-1 text-xs text-slate-500">最近更新：{formatUpdatedAt(project.updated_at)}</p><p className="mt-3 text-xs text-slate-400">{showFinancialAmounts ? <>待收 NT$ {project.outstandingReceivable.toLocaleString()} · 待付 NT$ {project.outstandingPayable.toLocaleString()}</> : '財務金額已隱藏'}</p><select value={project.clientId ?? ''} onClick={(event) => event.stopPropagation()} onChange={(event) => void updateProjectClient(project, event.target.value)} className="mt-3 max-w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300"><option value="">未分類客戶</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div><div className="flex shrink-0 flex-col items-end gap-2">
-      <button type="button" disabled={archivePending !== null} aria-label={`${project.archivedAt ? '恢復' : '歸檔'} ${project.name}`} onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50">{project.archivedAt ? '恢復' : '歸檔'}</button>
-      <button onClick={(event) => { event.stopPropagation(); deleteProject(project); }} aria-label={`刪除 ${project.name}`} className="rounded-lg p-2 text-slate-500 hover:text-rose-400">🗑️</button></div></article>)}</div>}</section>)}</div>}
-  </div>{pendingDeletion && <div className="fixed bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm shadow-xl sm:bottom-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:px-5"><span className="min-w-0 truncate">已刪除「{pendingDeletion.name}」</span><button onClick={restoreProject} className="shrink-0 font-bold text-indigo-400 hover:text-indigo-300">復原</button></div>}<Toast message={toast} onDismiss={dismissToast} /></main>;
-}
+  const selectSection = (next: DashboardSection) => {
+    if (next === 'settings') setSettingsVisited(true);
+    if (next === section) return;
+    setCreateForm(null);
+    onSectionChange(next);
+    window.scrollTo(0, 0);
+  };
+  const startProject = () => {
+    selectSection('projects');
+    setCreateForm((current) => section === 'projects' && current === 'project' ? null : 'project');
+  };
 
-function DashboardMetric({ label, value, tone = 'text-slate-100' }: { label: string; value: number; tone?: string }) {
-  const formatted = label.includes('款') || label.includes('支付') ? `NT$ ${value.toLocaleString()}` : value.toLocaleString();
-  return <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs text-slate-500">{label}</p><p className={`mt-2 text-lg font-black ${tone}`}>{formatted}</p></div>;
+  return (
+    <main className="client-dashboard min-h-screen bg-slate-950 text-slate-100">
+      <div className="mx-auto grid min-h-screen max-w-[112rem] grid-rows-[auto_1fr] lg:grid-rows-1 lg:grid-cols-[13rem_minmax(0,1fr)] 2xl:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside className="sticky top-0 z-10 self-start border-b border-slate-800 bg-slate-950/95 px-4 pb-2 backdrop-blur lg:flex lg:min-h-screen lg:flex-col lg:border-r lg:border-b-0 lg:p-5">
+          <div className="flex min-h-12 items-center gap-2.5 py-2 lg:mb-8 lg:px-2">
+            <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg bg-indigo-500/15 text-sm font-bold text-indigo-300">影</span>
+            <span className="text-sm font-semibold tracking-wide text-slate-100">影視製片控制台</span>
+          </div>
+          <nav aria-label="工作區導覽" className="grid grid-cols-4 gap-1 lg:grid-cols-1 lg:gap-2">
+            {dashboardSections.map(({ id, label }) => (
+              <button key={id} type="button" aria-current={section === id ? 'page' : undefined}
+                onClick={() => selectSection(id)}
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border px-1 text-sm font-medium lg:justify-start lg:px-3 ${section === id
+                  ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200'
+                  : 'border-transparent text-slate-400 hover:bg-slate-800/60 hover:text-slate-100'}`}>
+                <span aria-hidden="true" className={`hidden size-1.5 rounded-full lg:block ${section === id ? 'bg-indigo-400' : 'bg-slate-600'}`} />
+                {label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
+          <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4 sm:mb-6 lg:pb-5">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{dashboardHeadings[section]}</h1>
+            {(section === 'work' || section === 'projects') && (
+              <button type="button" onClick={startProject} className={primaryButton}
+                aria-expanded={section === 'projects' ? createForm === 'project' : undefined}>
+                ＋ 新增專案
+              </button>
+            )}
+          </header>
+
+          {!loading && cloudStatus !== 'current' && <p role="status" className="mb-4 rounded-xl border border-amber-900/70 p-3 text-sm text-amber-300">
+            {cloudStatus === 'checking' ? '正在核對大廳的雲端版本。' : '大廳目前無法取得雲端資料，清單與金額可能未更新。'}
+          </p>}
+
+          {(section === 'work' || section === 'finance') && (
+            loading ? <p role="status" className="py-10 text-center text-slate-400">資料載入中…</p> :
+              <WorkCommandPanel projects={projects} totalReceivable={totalReceivable} totalPayable={totalPayable}
+                showAmounts={showFinancialAmounts} onToggleAmounts={() => setShowFinancialAmounts((current) => !current)}
+                onOpenProject={onOpenProject} financeOnly={section === 'finance'} />
+          )}
+
+          {(section === 'settings' || settingsVisited) && (
+            <div hidden={section !== 'settings'} className="grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+              <MfaPanel />
+              <section aria-label="帳號與備份" className="rounded-2xl border border-slate-800 bg-slate-900/55 p-4 sm:p-6">
+                <h2 className="text-lg font-semibold">帳號與備份</h2>
+                {userEmail && <p className="mt-2 break-all text-sm text-slate-400">{userEmail}</p>}
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <a href="/api/backups/download" download className={secondaryButton}>下載營運備份</a>
+                  <button type="button" onClick={onSignOut} className="rounded-lg px-3 py-2.5 text-sm font-semibold text-rose-300 hover:bg-rose-950/35">登出</button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {section === 'projects' && <section aria-label="專案清單" className="min-w-0">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+              <label className="block w-full max-w-xl text-sm font-medium text-slate-300">
+                搜尋客戶或專案
+                <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="輸入客戶、聯絡人或專案名稱" className={`mt-2 ${inputClass}`} />
+              </label>
+              <button type="button" aria-expanded={createForm === 'client'}
+                onClick={() => setCreateForm((current) => current === 'client' ? null : 'client')}
+                className={secondaryButton}>＋ 新增客戶</button>
+            </div>
+
+            {createForm === 'client' && (
+              <form onSubmit={(event) => { event.preventDefault(); void createClient(); }}
+                className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/55 p-4 sm:p-5">
+                <h2 className="font-semibold">新增客戶</h2>
+                <div className="mt-4 grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <label className="grid gap-2 text-sm">客戶／公司名稱<input className={inputClass} required value={newClientName} onChange={(event) => setNewClientName(event.target.value)} /></label>
+                  <label className="grid gap-2 text-sm">主要聯絡人（選填）<input className={inputClass} value={newClientContact} onChange={(event) => setNewClientContact(event.target.value)} /></label>
+                  <button type="submit" className={primaryButton}>新增客戶</button>
+                </div>
+              </form>
+            )}
+            {createForm === 'project' && (
+              <form onSubmit={(event) => { event.preventDefault(); void createProject(); }}
+                className="mb-5 rounded-2xl border border-indigo-500/35 bg-slate-900/55 p-4 sm:p-5">
+                <h2 className="font-semibold">建立客戶專案</h2>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <label className="grid gap-2 text-sm">專案名稱<input className={inputClass} required value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label>
+                  <label className="grid gap-2 text-sm">所屬客戶<select className={inputClass} value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)}>
+                    <option value="">未分類客戶</option>
+                    {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                  </select></label>
+                  <label className="grid gap-2 text-sm">新專案工作模板<select className={inputClass} value={selectedProjectType} onChange={(event) => setSelectedProjectType(event.target.value as ProjectType)}>
+                    {PROJECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.name}｜{type.description}</option>)}
+                  </select></label>
+                  <button type="submit" className={`${primaryButton} self-end`}>建立專案</button>
+                </div>
+              </form>
+            )}
+
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              {!normalizedQuery && <div aria-label="專案列表篩選" role="group" className="flex gap-1 rounded-xl border border-slate-800 bg-slate-900/55 p-1">
+                <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className={`rounded-lg px-3 py-2 text-sm ${!showArchived ? 'bg-indigo-500/20 text-indigo-200' : 'text-slate-400'}`}>進行中</button>
+                <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className={`rounded-lg px-3 py-2 text-sm ${showArchived ? 'bg-indigo-500/20 text-indigo-200' : 'text-slate-400'}`}>已歸檔</button>
+              </div>}
+              <p className="text-xs text-slate-400">{clients.length} 位客戶 · {projects.length} 個專案</p>
+            </div>
+    {loading ? <p role="status" className="py-12 text-center text-slate-400">資料載入中…</p> :
+              clientGroups.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">
+                {normalizedQuery ? '找不到符合搜尋的客戶或專案。' : showArchived ? '目前沒有已歸檔的專案。' : '目前沒有進行中的專案。'}
+              </p> : <div className="space-y-5">
+                {clientGroups.map((group) => (
+                  <section key={group.id} className="project-client-group rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5">
+                    <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                      <div className="min-w-0">
+                        <h2 className="break-words font-semibold text-indigo-200">{group.name}</h2>
+                        {group.contact && <p className="mt-1 break-words text-xs text-slate-400">聯絡人 {group.contact}</p>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-slate-400">{group.projects.length} 個專案</span>
+                        {group.id !== 'unassigned' && <>
+                          <button type="button" onClick={() => void editClient(group.id)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800">編輯</button>
+                          <button type="button" onClick={() => void mergeClient(group.id)} className="rounded-lg border border-indigo-900/70 px-2.5 py-1.5 text-xs text-indigo-300 hover:bg-indigo-950/50">合併</button>
+                          <button type="button" onClick={() => void deleteClient(group.id, group.name, projects.filter((project) => project.clientId === group.id).length)}
+                            aria-label={`刪除客戶 ${group.name}`} className="rounded-lg border border-rose-900/70 px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-950/50">
+                            刪除
+                          </button>
+                        </>}
+                      </div>
+                    </header>
+                    {group.projects.length === 0 ? <p className="py-5 text-center text-xs text-slate-400">尚無專案</p> : (
+                      <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                        {group.projects.map((project) => (
+                          <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex min-w-0 cursor-pointer items-start justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-4 hover:border-indigo-500">
+                            <div className="min-w-0">
+                              <h3 className="break-words font-semibold">
+                                <button type="button" onClick={(event) => { event.stopPropagation(); onOpenProject(project.id); }} className="text-left hover:text-indigo-300">{project.name}</button>
+                              </h3>
+                              <p className="mt-1 text-xs text-slate-400">
+                                {project.archivedAt && <span className="text-indigo-300">已歸檔 · </span>}
+                                最近更新 {Number.isFinite(Date.parse(project.updated_at)) ? updatedAtFormat.format(new Date(project.updated_at)) : '—'}
+                              </p>
+                              {showFinancialAmounts && <p className="mt-2 text-xs text-slate-400">
+                                待收 NT$ {project.outstandingReceivable.toLocaleString()} · 待付 NT$ {project.outstandingPayable.toLocaleString()}
+                              </p>}
+                              <select value={project.clientId ?? ''} onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => void updateProjectClient(project, event.target.value)} aria-label={`變更 ${project.name} 的客戶`}
+                                className="mt-3 max-w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-300">
+                                <option value="">未分類客戶</option>
+                                {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                              </select>
+                            </div>
+                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              <button type="button" disabled={archivePending !== null} aria-label={`${project.archivedAt ? '恢復' : '歸檔'} ${project.name}`}
+                                onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50">
+                                {project.archivedAt ? '恢復' : '歸檔'}
+                              </button>
+                              <button type="button" onClick={(event) => { event.stopPropagation(); deleteProject(project); }}
+                                aria-label={`刪除 ${project.name}`} className="rounded-lg px-2 py-1.5 text-xs text-slate-400 hover:bg-rose-950/30 hover:text-rose-300">
+                                刪除
+                              </button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>}
+          </section>}
+        </div>
+      </div>
+      {pendingDeletion && <div className="fixed bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm shadow-xl sm:bottom-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:px-5"><span className="min-w-0 truncate">已刪除「{pendingDeletion.name}」</span><button onClick={restoreProject} className="shrink-0 font-bold text-indigo-400 hover:text-indigo-300">復原</button></div>}<Toast message={toast} onDismiss={dismissToast} /></main>
+  );
 }

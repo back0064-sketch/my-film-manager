@@ -17,6 +17,7 @@ test('修正交付日期並補登已收款影片，保留原月結金額', async
   await page.route(`**/api/projects/${projectId}`, (route) => route.fulfill({ json: route.request().method() === 'PUT' ? route.request().postDataJSON() : project }));
 
   await page.goto('/');
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('heading', { name: project.name }).click();
   const settlement = page.getByRole('region', { name: '專案月結' });
   await settlement.getByText('修正交付日期', { exact: true }).click();

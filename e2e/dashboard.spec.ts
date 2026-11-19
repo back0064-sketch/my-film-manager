@@ -80,6 +80,7 @@ test('手機以狀態選單切換單欄任務，不需要水平滑動', async ({
   await mockApi(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('heading', { name: project.name }).click();
 
   const selector = page.getByLabel('目前流程階段');
@@ -96,6 +97,7 @@ test('刪除客戶會呼叫 API 並從大廳移除客戶', async ({ page }) => {
   await mockApi(page);
   page.on('dialog', (dialog) => dialog.accept());
   await page.goto('/');
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('button', { name: '刪除客戶 測試客戶' }).click();
 
   await expect.poll(() => page.evaluate(() => (window as typeof window & { __deletedClient?: boolean }).__deletedClient)).toBe(true);
@@ -107,12 +109,14 @@ test('大廳財務金額預設隱藏並可手動顯示', async ({ page }) => {
   await page.goto('/');
 
   const financeSummary = page.getByRole('region', { name: '財務隱私控制' });
-  await expect(financeSummary.getByLabel('財務金額已隱藏')).toBeVisible();
+  await expect(financeSummary.getByText('財務金額已隱藏')).toBeVisible();
   await expect(financeSummary.getByText('NT$ 123,456')).toBeHidden();
   await expect(page.getByText('財務金額已隱藏')).toBeVisible();
 
   await financeSummary.getByRole('button', { name: '顯示金額' }).click();
-  await expect(financeSummary.getByText('NT$ 123,456')).toBeVisible();
+  await expect(financeSummary.getByText('待收 NT$ 123,456')).toBeVisible();
+  await expect(financeSummary.getByText('待付 NT$ 7,890')).toBeVisible();
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await expect(page.getByText('待收 NT$ 123,456 · 待付 NT$ 7,890')).toBeVisible();
 });
 
@@ -158,10 +162,14 @@ test('歸檔移出進行中，保留搜尋與追款，也可恢復', async ({ pa
   await mockApi(page);
   page.on('dialog', (dialog) => dialog.accept());
   await page.goto('/');
+  const nav = page.getByRole('navigation', { name: '工作區導覽' });
+  await nav.getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('button', { name: `歸檔 ${project.name}`, exact: true }).click();
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toHaveCount(0);
+  await nav.getByRole('button', { name: '工作台', exact: true }).click();
   await expect(page.getByRole('region', { name: '跨專案追款' }).getByText('INV-09')).toBeVisible();
   await expect(page.getByRole('region', { name: '今日工作清單' }).getByText('修改影片')).toHaveCount(0);
+  await nav.getByRole('button', { name: '專案', exact: true }).click();
 
   const search = page.getByRole('searchbox', { name: '搜尋客戶或專案' });
   await search.fill(project.name);
@@ -177,6 +185,7 @@ test('歸檔移出進行中，保留搜尋與追款，也可恢復', async ({ pa
 test('財務頁可依實際收付月份顯示月報', async ({ page }) => {
   await mockApi(page);
   await page.goto('/');
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('heading', { name: project.name }).click();
   await page.getByRole('button', { name: '💰 財務帳目' }).click();
   await page.getByLabel('報表月份').fill('2026-07');
@@ -192,6 +201,7 @@ test('長期專案可將當月已交付影片結案並從看板封存', async ({
   await mockApi(page);
   page.on('dialog', (dialog) => dialog.accept());
   await page.goto('/');
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('heading', { name: project.name }).click();
 
   const settlement = page.getByRole('region', { name: '專案月結' });
@@ -220,7 +230,38 @@ test('雲端較慢時仍會先顯示本機專案與快取內容', async ({ page 
   }, { projectFixture: project, fixtureProjectId: projectId, cacheKey: projectCacheKey('user-1', projectId) });
 
   await page.goto('/');
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await expect(page.getByRole('heading', { name: project.name })).toBeVisible({ timeout: 1000 });
   await page.getByRole('heading', { name: project.name }).click();
   await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible({ timeout: 1000 });
+});
+
+test('大廳切換工作區，設定與新增表單按需顯示', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: '工作區導覽' });
+  const navButton = (name: string) => nav.getByRole('button', { name, exact: true });
+  await expect(navButton('工作台')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('region', { name: '今日工作清單' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '下載營運備份' })).toBeHidden();
+  await expect(page.getByRole('heading', { name: '建立客戶專案' })).toBeHidden();
+
+  await page.getByRole('button', { name: /新增專案/ }).click();
+  await expect(navButton('專案')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByLabel('專案名稱', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /新增專案/ }).click();
+  await expect(page.getByLabel('專案名稱', { exact: true })).toBeHidden();
+
+  await navButton('設定').click();
+  await expect(page.getByRole('region', { name: '帳號安全與 MFA' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '下載營運備份' })).toHaveAttribute('href', '/api/backups/download');
+
+  await navButton('財務').click();
+  await expect(page.getByRole('region', { name: '跨專案追款' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '今日工作清單' })).toBeHidden();
+  await expect(page.getByRole('region', { name: '帳號安全與 MFA' })).toBeHidden();
+  await page.getByRole('button', { name: /INV-09/ }).click();
+  await page.getByRole('button', { name: /返回大廳/ }).click();
+  await expect(navButton('財務')).toHaveAttribute('aria-current', 'page');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });

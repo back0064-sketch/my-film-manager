@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-import { ClientDashboard } from '@/app/client-dashboard';
+import { ClientDashboard, type DashboardSection } from '@/app/client-dashboard';
 import { SyncConflictPanel } from '@/app/sync-conflict-panel';
 import { ProjectSummary, ProjectWorkspaceNavigation } from '@/app/project-overview';
 import { useProjectData } from '@/hooks/useProjectData';
@@ -23,6 +23,7 @@ const ProjectSettlementPanel = dynamic(
 );
 
 export default function Home() {
+  const [dashboardSection, setDashboardSection] = useState<DashboardSection>('work');
   const [activeProject, setActiveProject] = useState<{ id: string; destination?: ProjectDestination } | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -52,8 +53,15 @@ export default function Home() {
   if (mfaCheckedUserId !== user.id) return <main className="min-h-screen bg-slate-950 p-12 text-center text-slate-400">確認帳號安全狀態…</main>;
   if (mfaCheckError) return <SecurityCheckError onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setMfaCheckError(null); setUser(null); })} />;
   if (mfaRequired?.userId === user.id) return <MfaChallenge factorId={mfaRequired.factorId} onVerified={() => setMfaRequired(null)} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setUser(null); })} />;
-  if (activeProject) return <ProjectBoard projectId={activeProject.id} destination={activeProject.destination} userId={user.id} onBack={() => setActiveProject(null)} />;
-  return <ClientDashboard userId={user.id} userEmail={user.email} onOpenProject={(id, destination) => setActiveProject({ id, destination })} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setUser(null); })} />;
+  if (activeProject) return <ProjectBoard projectId={activeProject.id} destination={activeProject.destination} userId={user.id} onBack={() => { setActiveProject(null); window.scrollTo(0, 0); }} />;
+  return <ClientDashboard userId={user.id} userEmail={user.email}
+    section={dashboardSection} onSectionChange={setDashboardSection}
+    onOpenProject={(id, destination) => { setActiveProject({ id, destination }); window.scrollTo(0, 0); }}
+    onSignOut={() => void projectApi.signOut().finally(() => {
+      clearLocalProjectCache(localStorage, user.id);
+      setMfaCheckedUserId(null); setMfaRequired(null); setMfaCheckError(null);
+      setDashboardSection('work'); setUser(null);
+    })} />;
 }
 
 
@@ -166,7 +174,7 @@ function ProjectBoard({ projectId, userId, onBack, destination }: { projectId: s
     if (nextType !== project.projectType && window.confirm(`確定切換為「${PROJECT_TYPES.find((type) => type.id === nextType)?.name}」嗎？\n原有任務會保留，不相容狀態會移至新流程第一個狀態。`)) updateProjectTemplate(nextType);
   };
 
-  return <main className="project-board min-h-screen bg-slate-950 p-4 text-slate-100 md:p-8"><div className="mx-auto max-w-7xl">
+  return <main className="project-board min-h-screen bg-slate-950 p-4 text-slate-100 md:p-8"><div className="mx-auto max-w-[100rem]">
     <header className="project-board__header mb-6 flex items-center gap-4 border-b border-slate-800 pb-6"><button onClick={onBack} disabled={syncStatus === 'syncing'} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs disabled:opacity-50">← 返回大廳</button><div><div className="project-board__title-row flex items-center gap-3"><h1 className="text-2xl font-black">{project.name}</h1><button onClick={rename} className="text-xs text-indigo-400 hover:text-indigo-300">重新命名</button><label className="text-xs text-slate-400">工作模板<select value={project.projectType} onChange={(event) => changeTemplate(event.target.value as ProjectType)} className="ml-2 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100">{PROJECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label></div>{syncFeedback}</div></header>
     <ProjectWorkspaceNavigation activeModule={activeModule} onChange={(moduleId) => { setActiveModule(moduleId); setAddingStatus(null); }} />
     {conflictFeedback}

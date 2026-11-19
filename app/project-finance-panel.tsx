@@ -69,7 +69,7 @@ export function ProjectFinancePanel({ project, updateBudget, updateTask, updateS
     anchor.href = url; anchor.download = `${project.name}-財務.csv`; anchor.click(); URL.revokeObjectURL(url);
   };
 
-  return <main className="finance-panel min-h-screen bg-slate-950 p-4 pb-24 text-slate-100 md:p-8 md:pb-8"><div className="mx-auto max-w-7xl">
+  return <main className="finance-panel min-h-screen bg-slate-950 p-4 pb-24 text-slate-100 md:p-8 md:pb-8"><div className="mx-auto max-w-[100rem]">
     <header className="mb-6 flex flex-wrap items-center gap-3 border-b border-slate-800 pb-6"><button onClick={onBackToTasks} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs">← 製作任務</button><button type="button" onClick={onBack} disabled={saving} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs disabled:opacity-50">← 返回大廳</button><div className="min-w-0 flex-1"><p className="truncate text-xs text-indigo-400">{project.name}</p><h1 className="text-2xl font-black">💰 財務帳目</h1>{syncFeedback}</div><button onClick={exportCsv} className="rounded-lg border border-slate-700 px-3 py-2 text-xs">匯出 CSV</button></header>
     {conflictFeedback}
     <MonthlyFinanceReport tasks={transactions} />
