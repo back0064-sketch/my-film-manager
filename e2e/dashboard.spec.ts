@@ -265,3 +265,28 @@ test('大廳切換工作區，設定與新增表單按需顯示', async ({ page 
   await expect(navButton('財務')).toHaveAttribute('aria-current', 'page');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
+
+test('暖白測試版保有鍵盤焦點，減少動態時仍可操作', async ({ page }) => {
+  await mockApi(page);
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.goto('/');
+
+  const heading = page.getByRole('heading', { name: '工作台', exact: true });
+  await expect(heading).toHaveCSS('color', 'rgb(36, 35, 33)');
+  await expect(heading).toHaveCSS('font-family', /Workspace Noto Serif TC/);
+  const titleFontLoaded = await page.evaluate(async () => {
+    return (await document.fonts.load('600 32px "Workspace Noto Serif TC"', '工作台')).length > 0;
+  });
+  expect(titleFontLoaded).toBe(true);
+
+  const create = page.getByRole('button', { name: '新增專案', exact: true });
+  await expect(create).toHaveCSS('background-color', 'rgb(105, 78, 105)');
+  await expect(create).toHaveCSS('transition-duration', '0s');
+  await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '設定', exact: true }).focus();
+  await page.keyboard.press('Tab');
+  await expect(create).toBeFocused();
+  await expect(create).toHaveCSS('outline-style', 'solid');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: '客戶與專案' })).toBeVisible();
+  await expect(page.getByLabel('專案名稱', { exact: true })).toBeVisible();
+});

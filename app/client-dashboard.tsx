@@ -28,9 +28,9 @@ const dashboardHeadings: Record<DashboardSection, string> = {
   settings: '設定',
 };
 
-const inputClass = 'w-full min-w-0 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-base text-slate-100 focus:border-indigo-400 focus:outline-none';
-const secondaryButton = 'rounded-lg border border-slate-700 px-3 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-800';
-const primaryButton = 'rounded-lg bg-indigo-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50';
+const inputClass = 'w-full min-w-0 rounded-lg border border-work-control bg-work-input px-3 py-2.5 text-base text-work-ink placeholder:text-work-muted';
+const secondaryButton = 'workspace-button rounded-lg px-3 py-2.5 text-sm font-semibold';
+const primaryButton = 'workspace-button workspace-button--primary rounded-lg px-3 py-2.5 text-sm font-semibold disabled:opacity-50';
 
 const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -290,21 +290,18 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
   };
 
   return (
-    <main className="client-dashboard min-h-screen bg-slate-950 text-slate-100">
+    <main className="client-dashboard min-h-screen" data-theme={section === 'work' || section === 'projects' ? 'editorial' : undefined}>
       <div className="mx-auto grid min-h-screen max-w-[112rem] grid-rows-[auto_1fr] lg:grid-rows-1 lg:grid-cols-[13rem_minmax(0,1fr)] 2xl:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="sticky top-0 z-10 self-start border-b border-slate-800 bg-slate-950/95 px-4 pb-2 backdrop-blur lg:flex lg:min-h-screen lg:flex-col lg:border-r lg:border-b-0 lg:p-5">
+        <aside className="workspace-sidebar sticky top-0 z-10 self-start border-b px-4 pb-2 backdrop-blur lg:flex lg:min-h-screen lg:flex-col lg:border-r lg:border-b-0 lg:p-5">
           <div className="flex min-h-12 items-center gap-2.5 py-2 lg:mb-8 lg:px-2">
-            <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg bg-indigo-500/15 text-sm font-bold text-indigo-300">影</span>
-            <span className="text-sm font-semibold tracking-wide text-slate-100">影視製片控制台</span>
+            <span aria-hidden="true" className="workspace-mark grid size-8 shrink-0 place-items-center rounded-lg text-sm font-bold">影</span>
+            <span className="text-sm font-semibold tracking-wide">影視製片控制台</span>
           </div>
           <nav aria-label="工作區導覽" className="grid grid-cols-4 gap-1 lg:grid-cols-1 lg:gap-2">
             {dashboardSections.map(({ id, label }) => (
               <button key={id} type="button" aria-current={section === id ? 'page' : undefined}
                 onClick={() => selectSection(id)}
-                className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border px-1 text-sm font-medium lg:justify-start lg:px-3 ${section === id
-                  ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200'
-                  : 'border-transparent text-slate-400 hover:bg-slate-800/60 hover:text-slate-100'}`}>
-                <span aria-hidden="true" className={`hidden size-1.5 rounded-full lg:block ${section === id ? 'bg-indigo-400' : 'bg-slate-600'}`} />
+                className="workspace-nav flex min-h-11 items-center justify-center gap-2 rounded-lg border px-1 text-sm font-semibold lg:justify-start lg:px-3">
                 {label}
               </button>
             ))}
@@ -312,22 +309,22 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
         </aside>
 
         <div className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
-          <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4 sm:mb-6 lg:pb-5">
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{dashboardHeadings[section]}</h1>
+          <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-work-line pb-4 sm:mb-6 lg:pb-5">
+            <h1 className="workspace-heading text-2xl font-semibold tracking-tight sm:text-3xl">{dashboardHeadings[section]}</h1>
             {(section === 'work' || section === 'projects') && (
               <button type="button" onClick={startProject} className={primaryButton}
                 aria-expanded={section === 'projects' ? createForm === 'project' : undefined}>
-                ＋ 新增專案
+                <span className="inline-flex items-center gap-2">新增專案 <span className="workspace-arrow" aria-hidden="true">→</span></span>
               </button>
             )}
           </header>
 
-          {!loading && cloudStatus !== 'current' && <p role="status" className="mb-4 rounded-xl border border-amber-900/70 p-3 text-sm text-amber-300">
+          {!loading && cloudStatus !== 'current' && <p role="status" className="workspace-warning mb-4 rounded-lg p-3 text-sm">
             {cloudStatus === 'checking' ? '正在核對大廳的雲端版本。' : '大廳目前無法取得雲端資料，清單與金額可能未更新。'}
           </p>}
 
           {(section === 'work' || section === 'finance') && (
-            loading ? <p role="status" className="py-10 text-center text-slate-400">資料載入中…</p> :
+            loading ? <p role="status" className="py-10 text-center text-work-muted">資料載入中…</p> :
               <WorkCommandPanel projects={projects} totalReceivable={totalReceivable} totalPayable={totalPayable}
                 showAmounts={showFinancialAmounts} onToggleAmounts={() => setShowFinancialAmounts((current) => !current)}
                 onOpenProject={onOpenProject} financeOnly={section === 'finance'} />
@@ -349,7 +346,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
 
           {section === 'projects' && <section aria-label="專案清單" className="min-w-0">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-              <label className="block w-full max-w-xl text-sm font-medium text-slate-300">
+              <label className="block w-full max-w-xl text-sm font-medium text-work-muted">
                 搜尋客戶或專案
                 <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="輸入客戶、聯絡人或專案名稱" className={`mt-2 ${inputClass}`} />
@@ -361,7 +358,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
 
             {createForm === 'client' && (
               <form onSubmit={(event) => { event.preventDefault(); void createClient(); }}
-                className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/55 p-4 sm:p-5">
+                className="mb-5 rounded-2xl border border-work-line bg-work-surface p-4 sm:p-5">
                 <h2 className="font-semibold">新增客戶</h2>
                 <div className="mt-4 grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
                   <label className="grid gap-2 text-sm">客戶／公司名稱<input className={inputClass} required value={newClientName} onChange={(event) => setNewClientName(event.target.value)} /></label>
@@ -372,7 +369,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
             )}
             {createForm === 'project' && (
               <form onSubmit={(event) => { event.preventDefault(); void createProject(); }}
-                className="mb-5 rounded-2xl border border-indigo-500/35 bg-slate-900/55 p-4 sm:p-5">
+                className="mb-5 rounded-2xl border border-work-rule bg-work-surface p-4 sm:p-5">
                 <h2 className="font-semibold">建立客戶專案</h2>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <label className="grid gap-2 text-sm">專案名稱<input className={inputClass} required value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} /></label>
@@ -389,64 +386,64 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
             )}
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              {!normalizedQuery && <div aria-label="專案列表篩選" role="group" className="flex gap-1 rounded-xl border border-slate-800 bg-slate-900/55 p-1">
-                <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className={`rounded-lg px-3 py-2 text-sm ${!showArchived ? 'bg-indigo-500/20 text-indigo-200' : 'text-slate-400'}`}>進行中</button>
-                <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className={`rounded-lg px-3 py-2 text-sm ${showArchived ? 'bg-indigo-500/20 text-indigo-200' : 'text-slate-400'}`}>已歸檔</button>
+              {!normalizedQuery && <div aria-label="專案列表篩選" role="group" className="flex gap-1 rounded-xl border border-work-line bg-work-surface p-1">
+                <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className="workspace-filter rounded-lg px-3 py-2 text-sm">進行中</button>
+                <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className="workspace-filter rounded-lg px-3 py-2 text-sm">已歸檔</button>
               </div>}
-              <p className="text-xs text-slate-400">{clients.length} 位客戶 · {projects.length} 個專案</p>
+              <p className="text-xs text-work-muted">{clients.length} 位客戶 · {projects.length} 個專案</p>
             </div>
-    {loading ? <p role="status" className="py-12 text-center text-slate-400">資料載入中…</p> :
-              clientGroups.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-800 px-4 py-10 text-center text-sm text-slate-400">
+            {loading ? <p role="status" className="py-12 text-center text-work-muted">資料載入中…</p> :
+              clientGroups.length === 0 ? <p className="rounded-2xl border border-dashed border-work-line px-4 py-10 text-center text-sm text-work-muted">
                 {normalizedQuery ? '找不到符合搜尋的客戶或專案。' : showArchived ? '目前沒有已歸檔的專案。' : '目前沒有進行中的專案。'}
               </p> : <div className="space-y-5">
                 {clientGroups.map((group) => (
-                  <section key={group.id} className="project-client-group rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5">
-                    <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <section key={group.id} className="project-client-group py-4 sm:py-5">
+                    <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-work-line pb-3">
                       <div className="min-w-0">
-                        <h2 className="break-words font-semibold text-indigo-200">{group.name}</h2>
-                        {group.contact && <p className="mt-1 break-words text-xs text-slate-400">聯絡人 {group.contact}</p>}
+                        <h2 className="break-words font-semibold text-work-ink">{group.name}</h2>
+                        {group.contact && <p className="mt-1 break-words text-xs text-work-muted">聯絡人 {group.contact}</p>}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs text-slate-400">{group.projects.length} 個專案</span>
+                        <span className="text-xs text-work-muted">{group.projects.length} 個專案</span>
                         {group.id !== 'unassigned' && <>
-                          <button type="button" onClick={() => void editClient(group.id)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800">編輯</button>
-                          <button type="button" onClick={() => void mergeClient(group.id)} className="rounded-lg border border-indigo-900/70 px-2.5 py-1.5 text-xs text-indigo-300 hover:bg-indigo-950/50">合併</button>
+                          <button type="button" onClick={() => void editClient(group.id)} className="workspace-button rounded-lg px-2.5 py-1.5 text-xs">編輯</button>
+                          <button type="button" onClick={() => void mergeClient(group.id)} className="workspace-button rounded-lg px-2.5 py-1.5 text-xs">合併</button>
                           <button type="button" onClick={() => void deleteClient(group.id, group.name, projects.filter((project) => project.clientId === group.id).length)}
-                            aria-label={`刪除客戶 ${group.name}`} className="rounded-lg border border-rose-900/70 px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-950/50">
+                            aria-label={`刪除客戶 ${group.name}`} className="workspace-button workspace-button--quiet workspace-button--danger rounded-lg px-2.5 py-1.5 text-xs">
                             刪除
                           </button>
                         </>}
                       </div>
                     </header>
-                    {group.projects.length === 0 ? <p className="py-5 text-center text-xs text-slate-400">尚無專案</p> : (
+                    {group.projects.length === 0 ? <p className="py-5 text-center text-xs text-work-muted">尚無專案</p> : (
                       <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                         {group.projects.map((project) => (
-                          <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex min-w-0 cursor-pointer items-start justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-4 hover:border-indigo-500">
+                          <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex min-w-0 cursor-pointer items-start justify-between gap-2 rounded-xl border border-work-line bg-work-input p-4 hover:border-work-control">
                             <div className="min-w-0">
                               <h3 className="break-words font-semibold">
-                                <button type="button" onClick={(event) => { event.stopPropagation(); onOpenProject(project.id); }} className="text-left hover:text-indigo-300">{project.name}</button>
+                                <button type="button" onClick={(event) => { event.stopPropagation(); onOpenProject(project.id); }} className="text-left hover:text-work-link">{project.name}</button>
                               </h3>
-                              <p className="mt-1 text-xs text-slate-400">
-                                {project.archivedAt && <span className="text-indigo-300">已歸檔 · </span>}
+                              <p className="mt-1 text-xs text-work-muted">
+                                {project.archivedAt && <span className="text-work-link">已歸檔 · </span>}
                                 最近更新 {Number.isFinite(Date.parse(project.updated_at)) ? updatedAtFormat.format(new Date(project.updated_at)) : '—'}
                               </p>
-                              {showFinancialAmounts && <p className="mt-2 text-xs text-slate-400">
+                              {showFinancialAmounts && <p className="mt-2 text-xs text-work-muted tabular-nums">
                                 待收 NT$ {project.outstandingReceivable.toLocaleString()} · 待付 NT$ {project.outstandingPayable.toLocaleString()}
                               </p>}
                               <select value={project.clientId ?? ''} onClick={(event) => event.stopPropagation()}
                                 onChange={(event) => void updateProjectClient(project, event.target.value)} aria-label={`變更 ${project.name} 的客戶`}
-                                className="mt-3 max-w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-300">
+                                className="mt-3 max-w-full rounded-lg border border-work-control bg-work-input px-2 py-1.5 text-xs text-work-muted">
                                 <option value="">未分類客戶</option>
                                 {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
                               </select>
                             </div>
                             <div className="flex shrink-0 flex-col items-end gap-1">
                               <button type="button" disabled={archivePending !== null} aria-label={`${project.archivedAt ? '恢復' : '歸檔'} ${project.name}`}
-                                onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50">
+                                onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="workspace-button rounded-lg px-2 py-1.5 text-xs disabled:opacity-50">
                                 {project.archivedAt ? '恢復' : '歸檔'}
                               </button>
                               <button type="button" onClick={(event) => { event.stopPropagation(); deleteProject(project); }}
-                                aria-label={`刪除 ${project.name}`} className="rounded-lg px-2 py-1.5 text-xs text-slate-400 hover:bg-rose-950/30 hover:text-rose-300">
+                                aria-label={`刪除 ${project.name}`} className="workspace-button workspace-button--quiet workspace-button--danger rounded-lg px-2 py-1.5 text-xs">
                                 刪除
                               </button>
                             </div>

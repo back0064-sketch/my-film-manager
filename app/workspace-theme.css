@@ -1,0 +1,237 @@
+@font-face {
+  font-family: "Workspace Noto Serif TC";
+  src: url("/fonts/noto-serif-tc-workspace.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  /* Only the characters used in the two preview headings. */
+  unicode-range: U+4F5C, U+53F0, U+5BA2, U+5C08, U+5DE5, U+6236, U+6848, U+8207;
+}
+
+@theme inline {
+  --color-work-surface: var(--work-surface);
+  --color-work-paper: var(--work-paper);
+  --color-work-input: var(--work-input);
+  --color-work-ink: var(--work-ink);
+  --color-work-muted: var(--work-muted);
+  --color-work-line: var(--work-line);
+  --color-work-rule: var(--work-rule);
+  --color-work-control: var(--work-control);
+  --color-work-link: var(--work-link);
+}
+
+@layer components {
+  .client-dashboard {
+    --work-paper: #020617;
+    --work-sidebar: #020617f2;
+    --work-surface: #0b1223;
+    --work-input: #020617;
+    --work-ink: #f1f5f9;
+    --work-muted: #94a3b8;
+    --work-line: #1e293b;
+    --work-rule: #334155;
+    --work-control: #475569;
+    --work-hover: #1e293b;
+    --work-link: #c7d2fe;
+    --work-selected: #1e1b4b;
+    --work-primary: #4f46e5;
+    --work-primary-hover: #4338ca;
+    --work-primary-pressed: #3730a3;
+    --work-focus: #a5b4fc;
+    --work-danger-ink: #fda4af;
+    --work-danger-bg: #401624;
+    --work-warning-ink: #fde68a;
+    --work-warning-bg: #38280f;
+    --work-positive-ink: #6ee7b7;
+    background: var(--work-paper);
+    color: var(--work-ink);
+    color-scheme: dark;
+  }
+
+  .client-dashboard[data-theme="editorial"] {
+    --work-paper: #ffffff;
+    --work-sidebar: #f8f7f4;
+    --work-surface: #f8f7f4;
+    --work-input: #ffffff;
+    --work-ink: #242321;
+    --work-muted: #615b55;
+    --work-line: #e4dfd8;
+    --work-rule: #b4a99d;
+    --work-control: #8c8278;
+    --work-hover: #f5f1ec;
+    --work-link: #694e69;
+    --work-selected: #eee6f0;
+    --work-primary: #694e69;
+    --work-primary-hover: #563c56;
+    --work-primary-pressed: #473147;
+    --work-focus: #694e69;
+    --work-danger-ink: #9b303b;
+    --work-danger-bg: #fbecee;
+    --work-warning-ink: #795023;
+    --work-warning-bg: #fcf3dd;
+    --work-positive-ink: #2d6952;
+    color-scheme: light;
+  }
+
+  .workspace-sidebar {
+    background: var(--work-sidebar);
+    border-color: var(--work-line);
+  }
+
+  .workspace-mark {
+    color: var(--work-link);
+    background: var(--work-selected);
+  }
+
+  [data-theme="editorial"] .workspace-heading {
+    font-family: "Workspace Noto Serif TC", "Songti TC", "Noto Serif TC", serif;
+    font-size: clamp(1.5rem, 1.16rem + 1.25vw, 2.25rem);
+    line-height: 1.35;
+  }
+
+  .workspace-nav {
+    color: var(--work-muted);
+    border-color: transparent;
+  }
+
+  .workspace-nav[aria-current="page"],
+  .workspace-filter[aria-pressed="true"] {
+    color: var(--work-link);
+    background: var(--work-selected);
+    border-color: var(--work-link);
+  }
+
+  .workspace-filter {
+    color: var(--work-muted);
+    border: 1px solid transparent;
+  }
+
+  .workspace-button,
+  .workspace-filter,
+  .workspace-nav,
+  .workspace-row {
+    cursor: pointer;
+    transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+  }
+
+  .workspace-button {
+    border: 1px solid var(--work-control);
+    color: var(--work-ink);
+  }
+
+  .workspace-button--primary {
+    border-color: transparent;
+    background: var(--work-primary);
+    color: white;
+  }
+
+  .workspace-button--quiet {
+    border-color: transparent;
+    color: var(--work-muted);
+  }
+
+  .workspace-button--danger {
+    color: var(--work-danger-ink);
+  }
+
+  .workspace-button:disabled {
+    cursor: not-allowed;
+  }
+
+  .workspace-arrow {
+    display: inline-block;
+    transition: transform 160ms ease;
+  }
+
+  .workspace-button--primary:active:not(:disabled) {
+    background: var(--work-primary-pressed);
+  }
+
+  .client-dashboard :where(button, a, input, select):focus-visible {
+    outline: 2px solid var(--work-focus);
+    outline-offset: 2px;
+  }
+
+  .workspace-panel {
+    border: 1px solid var(--work-line);
+    border-radius: 1rem;
+    background: var(--work-surface);
+  }
+
+  [data-theme="editorial"] .workspace-panel {
+    border-width: 1px 0 0;
+    border-radius: 0;
+    border-color: var(--work-rule);
+    background: var(--work-paper);
+  }
+
+  .workspace-row-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .workspace-row {
+    min-width: 0;
+    border: 1px solid var(--work-line);
+    border-radius: 0.5rem;
+    background: var(--work-input);
+    color: var(--work-ink);
+  }
+
+  [data-theme="editorial"] .workspace-row-list {
+    gap: 0;
+    border-bottom: 1px solid var(--work-line);
+  }
+
+  [data-theme="editorial"] .workspace-row {
+    border-width: 1px 0 0;
+    border-radius: 0;
+  }
+
+  .client-dashboard .project-client-group {
+    background: var(--work-paper);
+    border-top: 1px solid var(--work-rule);
+  }
+
+  .workspace-danger { color: var(--work-danger-ink); background: var(--work-danger-bg); }
+  .workspace-warning { color: var(--work-warning-ink); background: var(--work-warning-bg); }
+  .workspace-positive { color: var(--work-positive-ink); }
+  .workspace-accent { color: var(--work-link); background: var(--work-selected); }
+  .workspace-neutral { color: var(--work-muted); background: var(--work-surface); }
+
+  @media (hover: hover) {
+    .workspace-nav:not([aria-current="page"]):hover,
+    .workspace-filter:not([aria-pressed="true"]):hover,
+    .workspace-button:hover:not(.workspace-button--primary, .workspace-button--danger, :disabled),
+    .workspace-row:hover {
+      background: var(--work-hover);
+    }
+
+    .workspace-button--danger:hover:not(:disabled) {
+      background: var(--work-danger-bg);
+    }
+
+    .workspace-button--primary:hover:not(:disabled, :active) {
+      background: var(--work-primary-hover);
+    }
+
+    .workspace-button--primary:hover:not(:disabled) .workspace-arrow {
+      transform: translateX(2px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .workspace-button,
+    .workspace-filter,
+    .workspace-nav,
+    .workspace-row,
+    .workspace-arrow {
+      transition: none;
+    }
+
+    .workspace-button--primary:hover:not(:disabled) .workspace-arrow {
+      transform: none;
+    }
+  }
+}

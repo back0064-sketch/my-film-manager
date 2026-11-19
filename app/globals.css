@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./workspace-theme.css";
 
 :root {
   --background: #ffffff;
@@ -26,12 +27,7 @@ body {
 /* 大廳資料量增加時，讓畫面外的客戶群組與專案卡延後繪製。 */
 .project-client-group {
   content-visibility: auto;
-  contain-intrinsic-size: 240px;
-}
-
-.project-card {
-  content-visibility: auto;
-  contain-intrinsic-size: 120px;
+  contain-intrinsic-size: auto 240px;
 }
 
 /* 財務收支明細不再顯示「對象」欄位；舊資料仍保留供相容讀取。 */
