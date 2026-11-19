@@ -83,6 +83,7 @@ export interface SettlementBatch {
   dueDate?: string;
   paidAt?: string;
   notes?: string;
+  withdrawnInvoices?: { withdrawnAt: string; amount: number; invoiceNumber?: string; invoiceDate?: string }[];
 }
 
 export type WorkCommandUrgency = 'overdue' | 'today' | 'upcoming' | 'unscheduled';
@@ -132,6 +133,7 @@ export interface MonthlySettlement {
 export interface ProjectData {
   id: string;
   name: string;
+  archivedAt?: string;
   /** Cloud row version used for optimistic concurrency control. */
   syncVersion?: string;
   projectType: ProjectType;
@@ -151,6 +153,7 @@ export interface ProjectData {
 export interface ProjectListItem {
   id: string;
   name: string;
+  archivedAt?: string;
   clientId: string | null;
   clientName: string | null;
   updated_at: string;

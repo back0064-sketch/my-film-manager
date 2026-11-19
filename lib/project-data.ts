@@ -76,17 +76,26 @@ function cleanSettlementBatch(value: unknown): SettlementBatch | null {
     return [{ taskId: item.taskId, title: item.title, deliveredAt: item.deliveredAt }];
   }) : [];
   const adjustment = typeof value.adjustment === 'number' && Number.isFinite(value.adjustment) ? value.adjustment : 0;
+  const withdrawnInvoices = Array.isArray(value.withdrawnInvoices) ? value.withdrawnInvoices.flatMap((entry: unknown) => {
+    if (!isRecord(entry) || typeof entry.withdrawnAt !== 'string' || typeof entry.amount !== 'number' || !Number.isFinite(entry.amount)) return [];
+    return [{ withdrawnAt: entry.withdrawnAt, amount: entry.amount,
+      invoiceNumber: typeof entry.invoiceNumber === 'string' ? entry.invoiceNumber : undefined,
+      invoiceDate: typeof entry.invoiceDate === 'string' ? entry.invoiceDate : undefined,
+    }];
+  }) : [];
   return {
     id: value.id,
     month: value.month,
     items,
     ...(includedDeliveries.length > 0 ? { includedDeliveries } : {}),
+    ...(withdrawnInvoices.length > 0 ? { withdrawnInvoices } : {}),
     subtotal,
     adjustment,
     total: Math.max(0, subtotal + adjustment),
     status: value.status === 'invoiced' || value.status === 'paid' ? value.status : 'draft',
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
     invoiceDate: typeof value.invoiceDate === 'string' ? value.invoiceDate : undefined,
+    invoiceNumber: typeof value.invoiceNumber === 'string' ? value.invoiceNumber : undefined,
     dueDate: typeof value.dueDate === 'string' ? value.dueDate : undefined,
     paidAt: typeof value.paidAt === 'string' ? value.paidAt : undefined,
     notes: typeof value.notes === 'string' ? value.notes : undefined,
@@ -196,6 +205,7 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
   return {
     id: fallbackId || (typeof source.id === 'string' ? source.id : ''),
     name: name ?? '未命名影視專案',
+    ...(typeof source.archivedAt === 'string' && Number.isFinite(Date.parse(source.archivedAt)) ? { archivedAt: source.archivedAt } : {}),
     syncVersion: typeof source.syncVersion === 'string' ? source.syncVersion : undefined,
     projectType,
     isFlatRate: source.isFlatRate === true || source.projectType === 'shortVideoEditing',

@@ -19,6 +19,7 @@ export type NormalizedProjectRow = {
   name: string;
   owner_id: string | null;
   client_id?: string | null;
+  archived_at?: string | null;
 };
 
 export type NormalizedTaskRow = {
@@ -91,7 +92,7 @@ export function buildOverdueItemsFromNormalized(
       });
       continue;
     }
-    if (task.is_completed) continue;
+    if (task.is_completed || project.archived_at) continue;
     items.push({
       id: `task:${task.project_id}:${task.task_id}`,
       projectId: String(project.id),

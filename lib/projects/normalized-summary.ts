@@ -47,6 +47,7 @@ export interface ProjectListMetadataRow {
   client_id: string | null;
   updated_at: string;
   payload_version?: string | null;
+  archived_at?: string | null;
   clients?: { name: string }[] | { name: string } | null;
 }
 
@@ -193,6 +194,7 @@ export function buildNormalizedProjectList(
     return {
       id: project.id,
       name: project.name,
+      archivedAt: project.archived_at ?? undefined,
       clientId: project.client_id,
       clientName: projectListClientName(project),
       updated_at: project.updated_at,
@@ -200,7 +202,7 @@ export function buildNormalizedProjectList(
       outstandingAmount: outstandingPayable,
       outstandingReceivable: outstandingIncome + outstandingBatches,
       outstandingPayable,
-      workCommandItems: sortWorkCommandItems(workItems).slice(0, 20),
+      workCommandItems: project.archived_at ? [] : sortWorkCommandItems(workItems).slice(0, 20),
       receivableItems: sortReceivables(receivableItems).slice(0, 20),
     };
   });

@@ -25,6 +25,7 @@ export const projectApi = {
   save: (project: ProjectData) => request<ProjectData>(`/api/projects/${project.id}`, { method: 'PUT', body: JSON.stringify(project) }),
   remove: (id: string) => request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
   assignClient: (id: string, clientId: string | null) => request<void>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ clientId }) }),
+  setArchived: (id: string, archived: boolean) => request<{ archivedAt: string | null; updated_at: string }>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ archived }) }),
   listClients: () => request<Client[]>('/api/clients'),
   createClient: (client: Pick<Client, 'name' | 'contactName' | 'contactEmail' | 'contactPhone' | 'notes'>) => request<Client>('/api/clients', { method: 'POST', body: JSON.stringify(client) }),
   updateClient: (id: string, client: Pick<Client, 'name' | 'contactName' | 'contactEmail' | 'contactPhone' | 'notes'>) => request<Client>(`/api/clients/${id}`, { method: 'PATCH', body: JSON.stringify(client) }),

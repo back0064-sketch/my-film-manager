@@ -4,6 +4,7 @@ import { cleanProjectData } from '@/lib/project-data';
 import { requireUser } from '@/lib/auth/session';
 import { ProjectConflictError, PublicApiError } from '@/lib/middlewares/api-handler';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
+import { preservesIssuedSettlements } from '@/lib/projects/settlement-logic';
 import { buildNormalizedProjectList, projectListClientName, projectsNeedingSource, type ProjectListMetadataRow } from '@/lib/projects/normalized-summary';
 import { buildReceivableItems, buildWorkCommandItems } from '@/lib/projects/work-command';
 import * as repository from '@/lib/repositories/project-repository';
@@ -83,6 +84,7 @@ async function listProjectsFromSource(ownerId: string, projectIds?: string[]) {
     return {
       id,
       name,
+      archivedAt: project?.archivedAt,
       clientId: client_id,
       clientName,
       updated_at,
@@ -171,17 +173,17 @@ export async function changeProjectClient(id: string, clientId: string | null) {
 
 export async function getProject(id: string): Promise<ProjectData | null> {
   const user = await requireUser();
-  const { data, error } = await repository.findProject(id, user.id);
-  if (error) throw error;
-  if (!data) return null;
-  const row = data as FilmProjectRow;
-  const project = cleanProjectData(row.project_data, id);
-  return project ? { ...project, syncVersion: row.updated_at } : null;
+  return readOwnedProject(id, user.id);
 }
 
 export async function upsertProject(id: string, payload: unknown): Promise<ProjectData> {
   const project = ensureProject(id, payload);
   const user = await requireUser();
+  if (project.syncVersion) {
+    const previous = await readOwnedProject(id, user.id);
+    if (!previous || previous.syncVersion !== project.syncVersion) throw new ProjectConflictError(previous);
+    if (!preservesIssuedSettlements(previous, project)) throw new PublicApiError('此變更會改動已請款紀錄，請使用月結更正操作', 422);
+  }
   const { data, error } = await repository.saveProject(project, user.id);
   if (error) {
     if (typeof error === 'object' && error && 'code' in error && error.code === '23505') {
@@ -192,6 +194,27 @@ export async function upsertProject(id: string, payload: unknown): Promise<Proje
   if (!data) throw new ProjectConflictError(await currentProjectForConflict(id, user.id));
   const saved = cleanProjectData(data.project_data, id) ?? project;
   return { ...saved, syncVersion: data.updated_at };
+}
+
+export async function setProjectArchived(id: string, archive: boolean) {
+  const user = await requireUser();
+  const project = await readOwnedProject(id, user.id);
+  if (!project) throw new PublicApiError('找不到專案', 404);
+  if (archive === Boolean(project.archivedAt)) return { archivedAt: project.archivedAt ?? null, updated_at: project.syncVersion };
+  const archivedAt = archive ? new Date().toISOString() : undefined;
+  const { data, error } = await repository.saveProject({ ...project, archivedAt }, user.id);
+  if (error) throw error;
+  if (!data) throw new ProjectConflictError(await currentProjectForConflict(id, user.id));
+  return { archivedAt: archivedAt ?? null, updated_at: data.updated_at };
+}
+
+async function readOwnedProject(id: string, ownerId: string) {
+  const { data, error } = await repository.findProject(id, ownerId);
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as FilmProjectRow;
+  const project = cleanProjectData(row.project_data, id);
+  return project ? { ...project, syncVersion: row.updated_at } : null;
 }
 
 async function currentProjectForConflict(id: string, ownerId: string): Promise<ProjectData | null> {

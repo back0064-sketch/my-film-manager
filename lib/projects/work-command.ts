@@ -28,6 +28,7 @@ function compareDueDates(a: { dueDate?: string; updatedAt: string }, b: { dueDat
 }
 
 export function buildWorkCommandItems(project: ProjectData, limit = 20): WorkCommandItem[] {
+  if (project.archivedAt) return [];
   return project.tasks
     .filter((task) => task.moduleId !== 'Finance' && !task.archivedAt && task.status !== finalStatus(project, task))
     .sort(compareDueDates)

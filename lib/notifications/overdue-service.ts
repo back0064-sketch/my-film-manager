@@ -20,7 +20,7 @@ function isMissingTableError(error: { code?: string; message?: string }) {
 
 async function loadOverdueData(database: ReturnType<typeof createSupabaseServiceClient>, today: string) {
   const [projectsResult, clientsResult, tasksResult, batchesResult] = await Promise.all([
-    database.from('film_projects').select('id, name, owner_id, client_id').order('updated_at', { ascending: false }),
+    database.from('film_projects').select('id, name, owner_id, client_id, archived_at:project_data->>archivedAt').order('updated_at', { ascending: false }),
     database.from('clients').select('id, name').order('name'),
     database.from('project_tasks').select('project_id, task_id, module_id, title, status, is_completed, due_date, transaction_type, amount, is_paid, settlement_batch_id, invoice_number, archived_at'),
     database.from('project_settlement_batches').select('project_id, batch_id, month, total, status, due_date, invoice_number'),

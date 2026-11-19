@@ -26,7 +26,7 @@ export async function findProjectListMetadata(ownerId: string) {
   const database = await createServerSupabaseClient();
   return database
     .from('film_projects')
-    .select('id, name, client_id, updated_at, payload_version:project_data->>syncVersion, clients(name)', { count: 'exact' })
+    .select('id, name, client_id, updated_at, payload_version:project_data->>syncVersion, archived_at:project_data->>archivedAt, clients(name)', { count: 'exact' })
     .eq('owner_id', ownerId)
     .order('updated_at', { ascending: false }).returns<ProjectListMetadataRow[]>();
 }
@@ -105,7 +105,8 @@ export async function findProject(id: string, ownerId: string) {
 
 export async function saveProject(project: ProjectData, ownerId: string): Promise<{ data: FilmProjectRow | null; error: unknown }> {
   const database = await createServerSupabaseClient();
-  const updatedAt = new Date().toISOString();
+  const previousTime = Date.parse(project.syncVersion ?? '');
+  const updatedAt = new Date(Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0)).toISOString();
   const savedProject = { ...project, syncVersion: updatedAt };
   const payload = {
     id: project.id,

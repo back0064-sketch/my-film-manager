@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiClientError, projectApi } from '@/lib/client/project-api';
 import { projectCacheKey } from '@/lib/client/project-cache';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
-import { closeSettlementMonth, correctUnsettledDeliveryDate, recordDeliveryCoveredByPayment, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject } from '@/lib/projects/settlement-logic';
+import { closeSettlementMonth, correctUnsettledDeliveryDate, recordDeliveryCoveredByPayment, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject, withdrawSettlementInvoice } from '@/lib/projects/settlement-logic';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
 import { ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch, Task, TransactionType } from '@/types/project';
 
@@ -211,6 +211,10 @@ export function useProjectData(projectId: string, userId: string) {
     updateProject((current) => reopenSettlementBatchInProject(current, id));
   };
 
+  const withdrawInvoice = (id: string) => {
+    updateProject((current) => withdrawSettlementInvoice(current, id));
+  };
+
   const addMonthlySettlement = () => {
     updateProject((current) => ({ ...current, monthlySettlements: [...current.monthlySettlements, { id: crypto.randomUUID(), month: new Date().toISOString().slice(0, 7), deliveredCount: 0, unitPrice: 0, status: 'pending' }] }));
   };
@@ -239,5 +243,5 @@ export function useProjectData(projectId: string, userId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, setDeliveryDate, recordCoveredDelivery, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, setDeliveryDate, recordCoveredDelivery, updateSettlementBatch, reopenSettlementBatch, withdrawInvoice, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
 }

@@ -39,6 +39,17 @@ describe('逾期通知資料', () => {
     expect(items[0]).toMatchObject({ projectName: '舊專案', clientName: '舊客戶', category: '工作' });
   });
 
+  it('已歸檔專案略過製作逾期，保留未收月結的通知', () => {
+    const items = buildOverdueItemsFromNormalized([
+      { id: 'p1', name: '已歸檔專案', owner_id: 'owner-1', archived_at: '2026-09-16T00:00:00Z' },
+    ], [
+      { project_id: 'p1', task_id: 'late', module_id: 'Scripting', title: '補拍', status: '待處理', is_completed: false, due_date: '2026-09-15', transaction_type: null, amount: 0, is_paid: false, settlement_batch_id: null, invoice_number: null, archived_at: null },
+    ], [
+      { project_id: 'p1', batch_id: 'b1', month: '2026-09', total: 1000, status: 'invoiced', due_date: '2026-09-14', invoice_number: 'INV-09' },
+    ], new Map(), '2026-09-17');
+    expect(items).toMatchObject([{ category: '收款', amount: 1000, invoiceNumber: 'INV-09' }]);
+  });
+
   it('指紋會隨逾期項目改變，郵件內容會跳脫 HTML', () => {
     const items = [{ id: 'task:p1:t1', projectId: 'p1', projectName: '<測試>', category: '工作' as const, title: '<script>', dueDate: '2026-09-15' }];
     expect(buildOverdueFingerprint('owner-1', '2026-09-17', items)).toBe(buildOverdueFingerprint('owner-1', '2026-09-17', items));

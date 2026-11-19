@@ -136,6 +136,7 @@ export function closeSettlementMonth(
     dueDate: current?.dueDate,
     paidAt: current?.paidAt,
     notes: current?.notes,
+    withdrawnInvoices: current?.withdrawnInvoices,
   };
   const candidateIds = new Set(candidates.map((task) => task.id));
 
@@ -183,10 +184,11 @@ export function updateSettlementBatch(
 ): ProjectData {
   const current = project.settlementBatches.find((batch) => batch.id === id);
   if (!current) return project;
-  if (current.includedDeliveries?.length && updates.status && updates.status !== 'paid') return project;
+  if ((current.status === 'paid' && updates.status && updates.status !== 'paid')
+    || (current.status === 'invoiced' && updates.status === 'draft')) return project;
   const status: SettlementBatchStatus = updates.status ?? current.status;
   const adjustment =
-    updates.adjustment === undefined ? current.adjustment : updates.adjustment;
+    current.status !== 'draft' || updates.adjustment === undefined ? current.adjustment : updates.adjustment;
   const batch = {
     ...current,
     ...updates,
@@ -197,7 +199,7 @@ export function updateSettlementBatch(
       status === "invoiced" && !updates.invoiceDate && !current.invoiceDate
         ? now.slice(0, 10)
         : (updates.invoiceDate ?? current.invoiceDate),
-    paidAt: status === "paid" ? (current.paidAt ?? now) : undefined,
+    paidAt: current.status === 'paid' ? current.paidAt : status === 'paid' ? now : undefined,
   };
   return {
     ...project,
@@ -220,13 +222,78 @@ export function updateSettlementBatch(
   };
 }
 
+export function withdrawSettlementInvoice(project: ProjectData, id: string, now = new Date().toISOString()): ProjectData {
+  return {
+    ...project,
+    settlementBatches: project.settlementBatches.map((batch) => batch.id !== id || batch.status !== 'invoiced' ? batch : {
+      ...batch,
+      status: 'draft',
+      invoiceNumber: undefined,
+      invoiceDate: undefined,
+      dueDate: undefined,
+      withdrawnInvoices: [...(batch.withdrawnInvoices ?? []), {
+        withdrawnAt: now, amount: batch.total, invoiceNumber: batch.invoiceNumber, invoiceDate: batch.invoiceDate,
+      }],
+    }),
+  };
+}
+
+export function summarizeSettlements(batches: SettlementBatch[], today = taipeiToday()) {
+  return batches.reduce((totals, batch) => {
+    totals[batch.status] += batch.total;
+    const due = batch.dueDate?.slice(0, 10);
+    if (batch.status === 'invoiced' && due && due < today) totals.overdue += batch.total;
+    return totals;
+  }, { draft: 0, invoiced: 0, paid: 0, overdue: 0 });
+}
+
+export function preservesIssuedSettlements(previous: ProjectData, next: ProjectData) {
+  const nextBatches = new Map(next.settlementBatches.map((batch) => [batch.id, batch]));
+  if (nextBatches.size !== next.settlementBatches.length) return false;
+  const nextTasks = new Map(next.tasks.map((task) => [task.id, task]));
+  const financeByBatch = new Map<string, Task[]>();
+  for (const task of previous.tasks) {
+    if (task.moduleId !== 'Finance' || !task.settlementBatchId) continue;
+    const tasks = financeByBatch.get(task.settlementBatchId) ?? [];
+    tasks.push(task);
+    financeByBatch.set(task.settlementBatchId, tasks);
+  }
+
+  return previous.settlementBatches.every((current) => {
+    const history = current.withdrawnInvoices ?? [];
+    if (current.status === 'draft' && !history.length) return true;
+    const proposed = nextBatches.get(current.id);
+    if (!proposed || JSON.stringify(proposed.withdrawnInvoices?.slice(0, history.length) ?? []) !== JSON.stringify(history)) return false;
+    if (current.status === 'draft') return true;
+    if (proposed.month !== current.month) return false;
+
+    if (current.status === 'invoiced' && proposed.status === 'draft') {
+      const withdrawal = proposed.withdrawnInvoices?.[history.length];
+      return proposed.withdrawnInvoices?.length === history.length + 1 && Boolean(withdrawal?.withdrawnAt)
+        && withdrawal?.amount === current.total && withdrawal.invoiceNumber === current.invoiceNumber
+        && withdrawal.invoiceDate === current.invoiceDate;
+    }
+    const paymentRecorded = current.status === 'invoiced' && proposed.status === 'paid';
+    return (current.status !== 'paid' || (proposed.status === 'paid' && proposed.paidAt === current.paidAt))
+      && proposed.adjustment === current.adjustment
+      && JSON.stringify(proposed.items) === JSON.stringify(current.items)
+      && JSON.stringify(proposed.includedDeliveries?.slice(0, current.includedDeliveries?.length ?? 0) ?? []) === JSON.stringify(current.includedDeliveries ?? [])
+      && (financeByBatch.get(current.id) ?? []).every((before) => {
+        const after = nextTasks.get(before.id);
+        return after?.moduleId === 'Finance' && after.amount === before.amount && after.settlementBatchId === before.settlementBatchId
+          && after.transactionType === before.transactionType
+          && (paymentRecorded ? after.isPaid && after.paidAt === proposed.paidAt : after.isPaid === before.isPaid && after.paidAt === before.paidAt);
+      });
+  });
+}
+
 export function reopenSettlementBatch(
   project: ProjectData,
   id: string,
   now = new Date().toISOString(),
 ): ProjectData {
   const batch = project.settlementBatches.find((item) => item.id === id);
-  if (!batch || batch.status !== "draft") return project;
+  if (!batch || batch.status !== "draft" || batch.withdrawnInvoices?.length) return project;
   return {
     ...project,
     settlementBatches: project.settlementBatches.filter(

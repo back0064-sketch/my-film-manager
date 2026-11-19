@@ -19,6 +19,7 @@ function projectListItem(project: ReturnType<typeof createProjectData>, updatedA
   return {
     id: project.id,
     name: project.name,
+    archivedAt: project.archivedAt,
     clientId: null,
     clientName: null,
     updated_at: updatedAt,
@@ -46,6 +47,8 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedProjectType, setSelectedProjectType] = useState<ProjectType>('general');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivePending, setArchivePending] = useState<string | null>(null);
   const [showFinancialAmounts, setShowFinancialAmounts] = useState(false);
   const [pendingDeletion, setPendingDeletion] = useState<ProjectListItem | null>(null);
   const deletionTimer = useRef<number | null>(null);
@@ -69,7 +72,7 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
         try {
           const raw = localStorage.getItem(id);
           const project = raw ? cleanProjectData(JSON.parse(raw), projectId) : null;
-          if (project) projectMap.set(projectId, projectListItem(project));
+          if (project && !projectMap.has(projectId)) projectMap.set(projectId, projectListItem(project));
         } catch { localStorage.removeItem(id); }
       }
       const localProjects = [...projectMap.values()].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -201,9 +204,30 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
     deletionTimer.current = window.setTimeout(() => { permanentlyDeleteProject(project); setPendingDeletion((current) => current?.id === project.id ? null : current); deletionTimer.current = null; }, 6000);
   };
   const restoreProject = () => { if (!pendingDeletion) return; if (deletionTimer.current) window.clearTimeout(deletionTimer.current); deletionTimer.current = null; setProjects((current) => [...current, pendingDeletion].sort((a, b) => b.updated_at.localeCompare(a.updated_at))); setPendingDeletion(null); };
+
+  const changeArchive = async (project: ProjectListItem) => {
+    const archiving = !project.archivedAt;
+    if (archiving && !window.confirm(`將「${project.name}」移到已歸檔？未收款項仍會顯示在追款清單。`)) return;
+    setArchivePending(project.id);
+    try {
+      const result = await projectApi.setArchived(project.id, archiving);
+      // Refresh the summary so reopening restores work items without loading the project board.
+      const refreshed = await projectApi.list().catch(() => null);
+      setProjects((current) => {
+        const updated = refreshed?.find((item) => item.id === project.id);
+        return current.map((item) => item.id !== project.id ? item : updated ?? { ...item, updated_at: result.updated_at, archivedAt: result.archivedAt ?? undefined });
+      });
+      showToast(archiving ? '專案已歸檔' : '專案已恢復為進行中', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '無法更新專案歸檔狀態', 'error');
+    } finally {
+      setArchivePending(null);
+    }
+  };
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase('zh-TW');
   const matches = useCallback((value?: string | null) => !normalizedQuery || value?.toLocaleLowerCase('zh-TW').includes(normalizedQuery), [normalizedQuery]);
-  const clientGroups = useMemo(() => [...clients.map((client) => ({ id: client.id, name: client.name, contact: client.contactName, projects: projects.filter((project) => project.clientId === client.id).filter((project) => matches(project.name)) })).filter((group) => matches(group.name) || matches(group.contact) || group.projects.length > 0), { id: 'unassigned', name: '未分類客戶', contact: undefined, projects: projects.filter((project) => !project.clientId && matches(project.name)) }], [clients, matches, projects]);
+  const visibleProjects = useMemo(() => projects.filter((project) => normalizedQuery || Boolean(project.archivedAt) === showArchived), [projects, normalizedQuery, showArchived]);
+  const clientGroups = useMemo(() => [...clients.map((client) => ({ id: client.id, name: client.name, contact: client.contactName, projects: visibleProjects.filter((project) => project.clientId === client.id && (matches(client.name) || matches(client.contactName) || matches(project.name))) })).filter((group) => matches(group.name) || matches(group.contact) || group.projects.length > 0), { id: 'unassigned', name: '未分類客戶', contact: undefined, projects: visibleProjects.filter((project) => !project.clientId && matches(project.name)) }], [clients, matches, visibleProjects]);
   const totalReceivable = useMemo(() => projects.reduce((sum, project) => sum + project.outstandingReceivable, 0), [projects]);
   const totalPayable = useMemo(() => projects.reduce((sum, project) => sum + project.outstandingPayable, 0), [projects]);
 
@@ -220,9 +244,16 @@ export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }:
     </p>}
     <WorkCommandPanel projects={projects} totalReceivable={totalReceivable} showAmounts={showFinancialAmounts} onOpenProject={onOpenProject} />
     <label className="mb-6 block text-sm font-bold">搜尋客戶或專案<input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="輸入客戶、聯絡人或專案名稱" className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-base font-normal" /></label>
+    {!normalizedQuery && <div aria-label="專案列表篩選" role="group" className="mb-4 flex gap-2">
+      <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className={`rounded-lg border px-4 py-2 text-sm ${!showArchived ? 'border-indigo-600 bg-indigo-950' : 'border-slate-700'}`}>進行中</button>
+      <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className={`rounded-lg border px-4 py-2 text-sm ${showArchived ? 'border-indigo-600 bg-indigo-950' : 'border-slate-700'}`}>已歸檔</button>
+    </div>}
     <section aria-label="財務隱私控制" className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold">財務摘要</h2><p className="mt-1 text-xs text-slate-500">金額預設隱藏，避免開啟大廳時被旁人看到。</p></div><button type="button" aria-pressed={showFinancialAmounts} onClick={() => setShowFinancialAmounts((current) => !current)} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-bold text-slate-200 hover:bg-slate-800">{showFinancialAmounts ? '隱藏金額' : '顯示金額'}</button></div>{showFinancialAmounts ? <div className="mt-4 grid grid-cols-2 gap-3"><DashboardMetric label="待收款" value={totalReceivable} tone="text-amber-300" /><DashboardMetric label="待支付" value={totalPayable} tone="text-rose-300" /></div> : <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/50 px-4 py-5 text-center text-sm tracking-[0.3em] text-slate-500" aria-label="財務金額已隱藏">••••••</div>}</section>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-bold">客戶與專案</h2><span className="text-xs text-slate-500">{clients.length} 位客戶 · {projects.length} 個專案</span></div>
-    {loading ? <p className="py-12 text-center text-slate-500">資料載入中…</p> : <div className="space-y-5">{clientGroups.filter((group) => group.projects.length || (group.id !== 'unassigned' && matches(group.name))).map((group) => <section key={group.id} className="project-client-group rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><header className="mb-4 flex flex-col gap-3 border-b border-slate-800 pb-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h3 className="break-words font-bold text-indigo-300">{group.name}</h3>{group.contact && <p className="mt-1 text-xs text-slate-500">聯絡人：{group.contact}</p>}</div><div className="flex flex-wrap items-center gap-2"><span className="mr-1 text-xs text-slate-500">{group.projects.length} 個專案</span>{group.id !== 'unassigned' && <><button onClick={() => void editClient(group.id)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800">編輯</button><button onClick={() => void mergeClient(group.id)} className="rounded-lg border border-indigo-900/70 px-2.5 py-1.5 text-xs text-indigo-300 hover:bg-indigo-950/50">合併</button><button onClick={() => void deleteClient(group.id, group.name, group.projects.length)} aria-label={`刪除客戶 ${group.name}`} className="rounded-lg border border-rose-900/70 px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-950/50">刪除</button></>}</div></header>{group.projects.length === 0 ? <p className="py-5 text-center text-xs text-slate-600">尚無專案</p> : <div className="grid gap-3 md:grid-cols-2">{group.projects.map((project) => <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex cursor-pointer items-start justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-4 hover:border-indigo-500"><div className="min-w-0"><h4 className="break-words font-bold">{project.name}</h4><p className="mt-1 text-xs text-slate-500">最近更新：{formatUpdatedAt(project.updated_at)}</p><p className="mt-3 text-xs text-slate-400">{showFinancialAmounts ? <>待收 NT$ {project.outstandingReceivable.toLocaleString()} · 待付 NT$ {project.outstandingPayable.toLocaleString()}</> : '財務金額已隱藏'}</p><select value={project.clientId ?? ''} onClick={(event) => event.stopPropagation()} onChange={(event) => void updateProjectClient(project, event.target.value)} className="mt-3 max-w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300"><option value="">未分類客戶</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div><button onClick={(event) => { event.stopPropagation(); deleteProject(project); }} aria-label={`刪除 ${project.name}`} className="rounded-lg p-2 text-slate-500 hover:text-rose-400">🗑️</button></article>)}</div>}</section>)}</div>}
+    {!loading && showArchived && !normalizedQuery && visibleProjects.length === 0 && <p className="mb-5 text-sm text-slate-400">目前沒有已歸檔的專案。</p>}
+    {loading ? <p className="py-12 text-center text-slate-500">資料載入中…</p> : <div className="space-y-5">{clientGroups.filter((group) => group.projects.length || (!showArchived && group.id !== 'unassigned' && matches(group.name))).map((group) => <section key={group.id} className="project-client-group rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><header className="mb-4 flex flex-col gap-3 border-b border-slate-800 pb-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h3 className="break-words font-bold text-indigo-300">{group.name}</h3>{group.contact && <p className="mt-1 text-xs text-slate-500">聯絡人：{group.contact}</p>}</div><div className="flex flex-wrap items-center gap-2"><span className="mr-1 text-xs text-slate-500">{group.projects.length} 個專案</span>{group.id !== 'unassigned' && <><button onClick={() => void editClient(group.id)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800">編輯</button><button onClick={() => void mergeClient(group.id)} className="rounded-lg border border-indigo-900/70 px-2.5 py-1.5 text-xs text-indigo-300 hover:bg-indigo-950/50">合併</button><button onClick={() => void deleteClient(group.id, group.name, projects.filter((project) => project.clientId === group.id).length)} aria-label={`刪除客戶 ${group.name}`} className="rounded-lg border border-rose-900/70 px-2.5 py-1.5 text-xs text-rose-400 hover:bg-rose-950/50">刪除</button></>}</div></header>{group.projects.length === 0 ? <p className="py-5 text-center text-xs text-slate-600">尚無專案</p> : <div className="grid gap-3 md:grid-cols-2">{group.projects.map((project) => <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex cursor-pointer items-start justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-4 hover:border-indigo-500"><div className="min-w-0"><h4 className="break-words font-bold">{project.name}</h4>{project.archivedAt && <p className="mt-1 text-xs text-indigo-300">已歸檔</p>}<p className="mt-1 text-xs text-slate-500">最近更新：{formatUpdatedAt(project.updated_at)}</p><p className="mt-3 text-xs text-slate-400">{showFinancialAmounts ? <>待收 NT$ {project.outstandingReceivable.toLocaleString()} · 待付 NT$ {project.outstandingPayable.toLocaleString()}</> : '財務金額已隱藏'}</p><select value={project.clientId ?? ''} onClick={(event) => event.stopPropagation()} onChange={(event) => void updateProjectClient(project, event.target.value)} className="mt-3 max-w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300"><option value="">未分類客戶</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div><div className="flex shrink-0 flex-col items-end gap-2">
+      <button type="button" disabled={archivePending !== null} aria-label={`${project.archivedAt ? '恢復' : '歸檔'} ${project.name}`} onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="rounded-lg border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50">{project.archivedAt ? '恢復' : '歸檔'}</button>
+      <button onClick={(event) => { event.stopPropagation(); deleteProject(project); }} aria-label={`刪除 ${project.name}`} className="rounded-lg p-2 text-slate-500 hover:text-rose-400">🗑️</button></div></article>)}</div>}</section>)}</div>}
   </div>{pendingDeletion && <div className="fixed bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm shadow-xl sm:bottom-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:px-5"><span className="min-w-0 truncate">已刪除「{pendingDeletion.name}」</span><button onClick={restoreProject} className="shrink-0 font-bold text-indigo-400 hover:text-indigo-300">復原</button></div>}<Toast message={toast} onDismiss={dismissToast} /></main>;
 }
 

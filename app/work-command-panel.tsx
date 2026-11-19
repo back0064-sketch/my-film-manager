@@ -48,7 +48,7 @@ function receivableClass(urgency: ReturnType<typeof receivableUrgency>) {
 export function WorkCommandPanel({ projects, totalReceivable, showAmounts, onOpenProject }: { projects: ProjectListItem[]; totalReceivable: number; showAmounts: boolean; onOpenProject: (id: string) => void }) {
   const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
   const today = taipeiToday();
-  const allTasks = useMemo(() => sortWorkCommandItems(projects.flatMap((project) => project.workCommandItems ?? []), today), [projects, today]);
+  const allTasks = useMemo(() => sortWorkCommandItems(projects.flatMap((project) => project.archivedAt ? [] : project.workCommandItems ?? []), today), [projects, today]);
   const allReceivables = useMemo(() => projects.flatMap((project) => project.receivableItems ?? []).sort((a, b) => {
     const aDue = dateOnly(a.dueDate);
     const bDue = dateOnly(b.dueDate);

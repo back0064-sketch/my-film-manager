@@ -6,10 +6,10 @@ vi.mock('@/lib/auth/session', () => ({ requireUser: async () => ({ id: 'owner' }
 vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient: async () => createClient('https://supabase.test', 'test-key') }));
 
 import { GET as getLobby } from '@/app/api/projects/route';
-import { GET as getProject, PUT as saveProject } from '@/app/api/projects/[id]/route';
+import { GET as getProject, PATCH as patchProject, PUT as saveProject } from '@/app/api/projects/[id]/route';
 import { createProjectData } from '@/lib/project-data';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
-import { updateSettlementBatch } from '@/lib/projects/settlement-logic';
+import { summarizeSettlements, updateSettlementBatch, withdrawSettlementInvoice } from '@/lib/projects/settlement-logic';
 import { receivableUrgency } from '@/lib/projects/work-command';
 import type { ProjectData, ProjectListItem } from '@/types/project';
 
@@ -48,7 +48,7 @@ function mockPostgrest({ truncateBatches = false } = {}) {
       return json([row]);
     }
     const select = searchParams.get('select') ?? '';
-    if (select.includes('payload_version:')) return json(rows.map(({ project_data, ...row }) => ({ ...row, payload_version: project_data.syncVersion })));
+    if (select.includes('payload_version:')) return json(rows.map(({ project_data, ...row }) => ({ ...row, payload_version: project_data.syncVersion, archived_at: project_data.archivedAt })));
     sourceQueries.push(idFilter);
     const selected = idFilter ? rows.filter((row) => idFilter.includes(row.id)) : rows;
     return json(selected);
@@ -69,7 +69,7 @@ it('入帳後即使摘要更新失敗，專案、大廳和追款清單也只列�
   expect(save.ok).toBe(true);
   const lobby = await getLobby();
   const projects: ProjectListItem[] = await lobby.json();
-  expect(sourceQueries).toEqual([`in.(${firstId})`]);
+  expect(sourceQueries).toEqual([`eq.${firstId}`, `in.(${firstId})`]);
   const details: ProjectData = await (await getProject(request(firstId), context(firstId))).json();
   expect(details.settlementBatches[0].status).toBe('paid');
   expect(projects).toMatchObject([
@@ -86,4 +86,46 @@ it('摘要被資料庫筆數上限截斷時，使用完整來源重算', async (
   const response = await getLobby();
   expect(await response.json()).toMatchObject([{ outstandingReceivable: 1500 }, { outstandingReceivable: 2400 }]);
   expect(sourceQueries).toEqual([null]);
+});
+
+it('直接存檔也無法覆寫已請款金額，撤回請款後才可更正', async () => {
+  const { first } = mockPostgrest();
+  const save = (project: ProjectData) => saveProject(new Request(request(firstId), { method: 'PUT', body: JSON.stringify(project) }), context(firstId));
+  const altered = { ...first, settlementBatches: [{ ...first.settlementBatches[0], adjustment: 500 }] };
+  expect((await save(altered)).status).toBe(422);
+  expect((await save({ ...first, settlementBatches: [] })).status).toBe(422);
+
+  const response = await save(withdrawSettlementInvoice(first, first.settlementBatches[0].id));
+  expect(response.ok).toBe(true);
+  const draft: ProjectData = await response.json();
+  expect(draft.settlementBatches[0]).toMatchObject({ status: 'draft', total: 1500, withdrawnInvoices: [{ amount: 1500, invoiceNumber: '發票 A' }] });
+  const updated = await save(updateSettlementBatch(draft, draft.settlementBatches[0].id, { adjustment: 500 }));
+  expect(updated.ok).toBe(true);
+  expect((await updated.json()).settlementBatches[0].total).toBe(2000);
+});
+
+it('逾期金額只加總已請款且超過期限的月份', () => {
+  const [invoice] = fixture(firstId, '發票 A', 1500).settlementBatches;
+  expect(summarizeSettlements([
+    invoice,
+    { ...invoice, total: 400, status: 'draft' },
+    { ...invoice, total: 700, status: 'paid' },
+    { ...invoice, total: 900, dueDate: '2026-11-18' },
+  ], '2026-11-18')).toEqual({ draft: 400, invoiced: 2400, paid: 700, overdue: 1500 });
+});
+
+it('歸檔及恢復都保留月結和跨專案應收', async () => {
+  mockPostgrest();
+  const archive = (archived: boolean) => patchProject(new Request(request(firstId), { method: 'PATCH', body: JSON.stringify({ archived }) }), context(firstId));
+  const archived = await archive(true);
+  expect(archived.ok).toBe(true);
+  expect(await archived.json()).toMatchObject({ archivedAt: expect.any(String) });
+  const projects: ProjectListItem[] = await (await getLobby()).json();
+  expect(projects.find((project) => project.id === firstId)).toMatchObject({ archivedAt: expect.any(String), outstandingReceivable: 1500, receivableItems: [{ amount: 1500 }] });
+  const restored = await archive(false);
+  expect(restored.ok).toBe(true);
+  expect(await restored.json()).toMatchObject({ archivedAt: null });
+  const persisted: ProjectData = await (await getProject(request(firstId), context(firstId))).json();
+  expect(persisted.archivedAt).toBeUndefined();
+  expect(persisted.settlementBatches[0]).toMatchObject({ total: 1500, status: 'invoiced' });
 });

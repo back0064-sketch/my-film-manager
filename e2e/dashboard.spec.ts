@@ -47,6 +47,14 @@ async function mockApi(page: Page) {
       }
       if (url.pathname === '/api/projects' && method === 'GET') return json(projectList);
       if (url.pathname === `/api/projects/${fixtureProjectId}` && method === 'GET') return json(projectFixture);
+      if (url.pathname === `/api/projects/${fixtureProjectId}` && method === 'PATCH') {
+        const body = input instanceof Request ? await input.clone().json() : JSON.parse(String(init?.body ?? '{}'));
+        if (typeof body.archived === 'boolean') {
+          const archivedAt = body.archived ? new Date().toISOString() : null;
+          Object.assign(projectList[0], { archivedAt });
+          return json({ archivedAt, updated_at: new Date().toISOString() });
+        }
+      }
       if (url.pathname === `/api/projects/${fixtureProjectId}` && method === 'PUT') {
         const body = input instanceof Request ? await input.clone().json() : JSON.parse(String(init?.body ?? '{}'));
         return json({ ...body, syncVersion: version });
@@ -114,6 +122,26 @@ test('每日工作指揮台會優先顯示逾期工作與追款', async ({ page 
   await expect(command.getByText('INV-09')).toBeVisible();
   await command.getByRole('button', { name: /已逾期 修改影片/ }).click();
   await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible();
+});
+
+test('歸檔移出進行中，保留搜尋與追款，也可恢復', async ({ page }) => {
+  await mockApi(page);
+  page.on('dialog', (dialog) => dialog.accept());
+  await page.goto('/');
+  await page.getByRole('button', { name: `歸檔 ${project.name}`, exact: true }).click();
+  await expect(page.getByRole('heading', { name: project.name, exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: '跨專案追款' }).getByText('INV-09')).toBeVisible();
+  await expect(page.getByRole('region', { name: '今日工作清單' }).getByText('修改影片')).toHaveCount(0);
+
+  const search = page.getByRole('searchbox', { name: '搜尋客戶或專案' });
+  await search.fill(project.name);
+  await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
+  await search.fill('');
+  await page.getByRole('button', { name: '已歸檔', exact: true }).click();
+  await page.getByRole('button', { name: `恢復 ${project.name}`, exact: true }).click();
+  await expect(page.getByRole('heading', { name: project.name, exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '進行中', exact: true }).click();
+  await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
 });
 
 test('財務頁可依實際收付月份顯示月報', async ({ page }) => {
