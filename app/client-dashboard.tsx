@@ -7,9 +7,10 @@ import { MfaPanel } from '@/app/mfa-panel';
 import { projectApi } from '@/lib/client/project-api';
 import { dashboardCacheKey, readDashboardCache, writeDashboardCache } from '@/lib/client/dashboard-cache';
 import { projectCacheKey, projectCachePrefix } from '@/lib/client/project-cache';
+import { useAmountVisibility } from './amount-visibility';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
-import { buildProjectCommandSummary } from '@/lib/projects/work-command';
+import { buildProjectCommandSummary, taipeiToday } from '@/lib/projects/work-command';
 import { Client, OpenProject, ProjectListItem, PROJECT_TYPES, ProjectType } from '@/types/project';
 
 const dashboardSections = [
@@ -54,6 +55,13 @@ function projectListItem(project: ReturnType<typeof createProjectData>, updatedA
 
 const updatedAtFormat = new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' });
 
+function projectUpdateLabel(timestamp: string) {
+  const updated = new Date(timestamp);
+  if (!Number.isFinite(updated.getTime())) return '更新日期未提供';
+  const days = Math.round((Date.parse(taipeiToday()) - Date.parse(taipeiToday(updated))) / 86400000);
+  return days === 0 ? '今天更新' : days > 0 && days < 31 ? `${days} 天前更新` : updatedAtFormat.format(updated);
+}
+
 export function ClientDashboard({ userId, userEmail, section, onSectionChange, onOpenProject, onSignOut }: {
   userId: string;
   userEmail?: string;
@@ -76,7 +84,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [archivePending, setArchivePending] = useState<string | null>(null);
-  const [showFinancialAmounts, setShowFinancialAmounts] = useState(false);
+  const { visible: showFinancialAmounts, toggle: toggleAmounts } = useAmountVisibility();
   const [pendingDeletion, setPendingDeletion] = useState<ProjectListItem | null>(null);
   const deletionTimer = useRef<number | null>(null);
   const { toast, showToast, dismissToast } = useToast();
@@ -259,7 +267,11 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
   const visibleProjects = useMemo(() => projects.filter((project) => normalizedQuery || Boolean(project.archivedAt) === showArchived), [projects, normalizedQuery, showArchived]);
   const clientGroups = useMemo(() => {
     if (section !== 'projects') return [];
-    const groups = clients.map((client) => ({
+    const knownClients = new Map(clients.map((client) => [client.id, { id: client.id, name: client.name, contactName: client.contactName }]));
+    if (cloudStatus !== 'current') for (const project of visibleProjects) {
+      if (project.clientId && !knownClients.has(project.clientId)) knownClients.set(project.clientId, { id: project.clientId, name: project.clientName || '客戶', contactName: undefined });
+    }
+    const groups = [...knownClients.values()].map((client) => ({
       id: client.id,
       name: client.name,
       contact: client.contactName,
@@ -273,7 +285,10 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
       contact: undefined,
       projects: visibleProjects.filter((project) => !project.clientId && matches(project.name)),
     }].filter((group) => group.id !== 'unassigned' || group.projects.length);
-  }, [clients, matches, section, showArchived, visibleProjects]);
+  }, [clients, cloudStatus, matches, section, showArchived, visibleProjects]);
+  const [showEmptyClients, setShowEmptyClients] = useState(false);
+  const emptyClients = clientGroups.filter((group) => !group.projects.length);
+  const displayedGroups = showEmptyClients || normalizedQuery ? clientGroups : clientGroups.filter((group) => group.projects.length);
   const totalReceivable = useMemo(() => projects.reduce((sum, project) => sum + project.outstandingReceivable, 0), [projects]);
   const totalPayable = useMemo(() => projects.reduce((sum, project) => sum + project.outstandingPayable, 0), [projects]);
 
@@ -326,7 +341,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
           {(section === 'work' || section === 'finance') && (
             loading ? <p role="status" className="py-10 text-center text-work-muted">資料載入中…</p> :
               <WorkCommandPanel projects={projects} totalReceivable={totalReceivable} totalPayable={totalPayable}
-                showAmounts={showFinancialAmounts} onToggleAmounts={() => setShowFinancialAmounts((current) => !current)}
+                showAmounts={showFinancialAmounts} onToggleAmounts={toggleAmounts}
                 onOpenProject={onOpenProject} financeOnly={section === 'finance'} />
           )}
 
@@ -390,54 +405,60 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
                 <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className="workspace-filter px-3 py-2 text-sm">進行中</button>
                 <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className="workspace-filter px-3 py-2 text-sm">已歸檔</button>
               </div>}
-              <p className="text-xs text-work-muted">{clients.length} 位客戶 · {projects.length} 個專案</p>
+              <p className="text-xs text-work-muted">{cloudStatus === 'current' && `${clients.length} 位客戶 · `}{!loading && `${projects.length} 個專案`}</p>
             </div>
             {loading ? <p role="status" className="py-12 text-center text-work-muted">資料載入中…</p> :
-              clientGroups.length === 0 ? <p className="rounded-2xl border border-dashed border-work-line px-4 py-10 text-center text-sm text-work-muted">
+              clientGroups.length === 0 && cloudStatus !== 'current' ? <p role="status" className="loading-paper">{cloudStatus === 'checking' ? '正在載入專案清單…' : '暫時無法取得專案清單'}</p> : clientGroups.length === 0 ? <p className="rounded-2xl border border-dashed border-work-line px-4 py-10 text-center text-sm text-work-muted">
                 {normalizedQuery ? '找不到符合搜尋的客戶或專案。' : showArchived ? '目前沒有已歸檔的專案。' : '目前沒有進行中的專案。'}
               </p> : <div className="space-y-5">
-                {clientGroups.map((group) => (
-                  <section key={group.id} className="project-client-group px-3 py-4 sm:p-5">
-                    <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-work-line pb-3">
+                {displayedGroups.map((group) => (
+                  <details key={group.id} open={Boolean(group.projects.length || normalizedQuery)} className="project-client-group px-3 py-3 sm:px-5">
+                    <summary className="client-group-summary">
                       <div className="min-w-0">
                         <h2 className="break-words font-semibold text-work-ink">{group.name}</h2>
                         {group.contact && <p className="mt-1 break-words text-xs text-work-muted">聯絡人 {group.contact}</p>}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs text-work-muted">{group.projects.length} 個專案</span>
-                        {group.id !== 'unassigned' && <>
+                      </div>
+                    </summary>
+                    {group.id !== 'unassigned' && <details className="client-admin">
+                      <summary aria-label={`管理${group.name}`}>管理客戶</summary><div>
                           <button type="button" onClick={() => void editClient(group.id)} className="workspace-button px-2.5 py-1.5 text-xs">編輯</button>
                           <button type="button" onClick={() => void mergeClient(group.id)} className="workspace-button px-2.5 py-1.5 text-xs">合併</button>
                           <button type="button" onClick={() => void deleteClient(group.id, group.name, projects.filter((project) => project.clientId === group.id).length)}
                             aria-label={`刪除客戶 ${group.name}`} className="workspace-button workspace-button--quiet workspace-button--danger px-2.5 py-1.5 text-xs">
                             刪除
                           </button>
-                        </>}
-                      </div>
-                    </header>
+                      </div></details>}
                     {group.projects.length === 0 ? <p className="py-5 text-center text-xs text-work-muted">尚無專案</p> : (
                       <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                        {group.projects.map((project) => (
-                          <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex min-w-0 cursor-pointer items-start justify-between gap-2 rounded-xl border border-work-line bg-work-input p-4 hover:border-work-control">
+                        {group.projects.map((project) => {
+                          const next = project.workCommandItems?.filter((t) => t.dueDate).sort((a, b) => a.dueDate!.localeCompare(b.dueDate!))[0];
+                          return (
+                          <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-xl border border-work-line bg-work-input p-4 hover:border-work-control">
                             <div className="min-w-0">
                               <h3 className="break-words font-semibold">
                                 <button type="button" onClick={(event) => { event.stopPropagation(); onOpenProject(project.id); }} className="workspace-button text-left hover:text-work-link px-2 py-1">{project.name}</button>
                               </h3>
                               <p className="mt-1 text-xs text-work-muted">
                                 {project.archivedAt && <span className="text-work-link">已歸檔 · </span>}
-                                最近更新 {Number.isFinite(Date.parse(project.updated_at)) ? updatedAtFormat.format(new Date(project.updated_at)) : '—'}
+                                <time dateTime={project.updated_at} title={project.updated_at}>{projectUpdateLabel(project.updated_at)}</time>
                               </p>
+                              <p className="project-card-meta">{project.commandCounts ? `進行中 ${project.commandCounts.tasks.all} 項` : `共 ${project.taskCount} 項任務`}{Boolean(project.commandCounts?.tasks.waiting) && ` · 等回覆 ${project.commandCounts?.tasks.waiting} 項`}</p>
+                              {next && <p className="project-card-next">{next.dueDate} · {next.title}</p>}
                               {showFinancialAmounts && <p className="mt-2 text-xs text-work-muted tabular-nums">
                                 待收 NT$ {project.outstandingReceivable.toLocaleString()} · 待付 NT$ {project.outstandingPayable.toLocaleString()}
                               </p>}
-                              <select value={project.clientId ?? ''} onClick={(event) => event.stopPropagation()}
+                            </div>
+                            <details className="project-options card-options" onClick={(event) => event.stopPropagation()}>
+                              <summary aria-label={`${project.name}的更多操作`}>⋯</summary>
+                              <div><label>所屬客戶<select value={project.clientId ?? ''} onClick={(event) => event.stopPropagation()}
                                 onChange={(event) => void updateProjectClient(project, event.target.value)} aria-label={`變更 ${project.name} 的客戶`}
                                 className="mt-3 max-w-full rounded-lg border border-work-control bg-work-input px-2 py-1.5 text-xs text-work-muted">
                                 <option value="">未分類客戶</option>
                                 {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-                              </select>
-                            </div>
-                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              </select></label>
                               <button type="button" disabled={archivePending !== null} aria-label={`${project.archivedAt ? '恢復' : '歸檔'} ${project.name}`}
                                 onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="workspace-button px-2 py-1.5 text-xs disabled:opacity-50">
                                 {project.archivedAt ? '恢復' : '歸檔'}
@@ -446,13 +467,17 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
                                 aria-label={`刪除 ${project.name}`} className="workspace-button workspace-button--quiet workspace-button--danger px-2 py-1.5 text-xs">
                                 刪除
                               </button>
-                            </div>
+                              </div>
+                            </details>
                           </article>
-                        ))}
+                        );})}
                       </div>
                     )}
-                  </section>
+                  </details>
                 ))}
+                {!normalizedQuery && emptyClients.length > 0 && <button onClick={() => setShowEmptyClients(!showEmptyClients)} aria-expanded={showEmptyClients} className="workspace-button px-3 py-2 text-sm">
+                  {showEmptyClients ? '收合' : '顯示'}無專案客戶 · {emptyClients.length} 位
+                </button>}
               </div>}
           </section>}
         </div>

@@ -4,11 +4,13 @@ import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { ClientDashboard, type DashboardSection } from '@/app/client-dashboard';
 import { SyncConflictPanel } from '@/app/sync-conflict-panel';
+import { AmountInput, AmountToggle, AmountVisibility, useAmountVisibility } from './amount-visibility';
+import { ProductionTasks } from './production-tasks';
 import { ProjectSummary, ProjectWorkspaceNavigation } from '@/app/project-overview';
 import { useProjectData } from '@/hooks/useProjectData';
 import { projectApi } from '@/lib/client/project-api';
 import { clearLocalProjectCache } from '@/lib/client/project-cache';
-import { ModuleId, PROJECT_TYPES, ProjectDestination, ProjectType, WORKSPACE_MODULES } from '@/types/project';
+import { ModuleId, PROJECT_TYPES, ProjectDestination, ProjectType } from '@/types/project';
 
 type SessionUser = { id: string; email?: string };
 
@@ -53,15 +55,15 @@ export default function Home() {
   if (mfaCheckedUserId !== user.id) return <main className="min-h-screen bg-work-canvas p-12 text-center text-work-muted">確認帳號安全狀態…</main>;
   if (mfaCheckError) return <SecurityCheckError onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setMfaCheckError(null); setUser(null); })} />;
   if (mfaRequired?.userId === user.id) return <MfaChallenge factorId={mfaRequired.factorId} onVerified={() => setMfaRequired(null)} onSignOut={() => void projectApi.signOut().finally(() => { clearLocalProjectCache(localStorage, user.id); setMfaCheckedUserId(null); setMfaRequired(null); setUser(null); })} />;
-  if (activeProject) return <ProjectBoard projectId={activeProject.id} destination={activeProject.destination} userId={user.id} onBack={() => { setActiveProject(null); window.scrollTo(0, 0); }} />;
-  return <ClientDashboard userId={user.id} userEmail={user.email}
+  if (activeProject) return <AmountVisibility key={user.id}><ProjectBoard projectId={activeProject.id} destination={activeProject.destination} userId={user.id} onBack={() => { setActiveProject(null); window.scrollTo(0, 0); }} /></AmountVisibility>;
+  return <AmountVisibility key={user.id}><ClientDashboard userId={user.id} userEmail={user.email}
     section={dashboardSection} onSectionChange={setDashboardSection}
     onOpenProject={(id, destination) => { setActiveProject({ id, destination }); window.scrollTo(0, 0); }}
     onSignOut={() => void projectApi.signOut().finally(() => {
       clearLocalProjectCache(localStorage, user.id);
       setMfaCheckedUserId(null); setMfaRequired(null); setMfaCheckError(null);
       setDashboardSection('work'); setUser(null);
-    })} />;
+    })} /></AmountVisibility>;
 }
 
 
@@ -90,7 +92,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: SessionUser) 
     catch (error) { setMessage(error instanceof Error ? error.message : '無法寄出重設信件'); }
     finally { setPending(false); }
   };
-  return <main className="flex min-h-screen items-center justify-center bg-work-canvas p-6 text-work-ink"><section className="auth-card w-full max-w-md p-6 sm:p-8"><h1 className="workspace-heading text-3xl font-semibold text-work-link">🎬 影視製片控制台</h1>{resetMode ? <><p className="mt-2 text-sm text-work-muted">輸入既有帳號的 Email，我們會寄出重設連結。</p><form onSubmit={(event) => { event.preventDefault(); void requestReset(); }} className="mt-6 space-y-4"><input type="email" required autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-work-control bg-work-paper px-4 py-3 text-sm" /><button disabled={pending} className="workspace-button workspace-button--primary w-full px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '寄送中…' : '寄送重設連結'}</button></form>{message && <p className="mt-4 text-sm text-work-warning">{message}</p>}<button onClick={() => { setResetMode(false); setMessage(''); }} className="workspace-button mt-6 text-sm px-2 py-1">← 回到登入</button></> : <><p className="mt-2 text-sm text-work-muted">此控制台為私人單人使用，請以既有帳號登入。</p>{googleEnabled && <a href="/api/auth/google" className="workspace-button mt-6 block w-full px-4 py-3 text-center text-sm font-bold">使用 Google 帳號登入</a>}<form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="mt-6 space-y-4"><input type="email" required autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-work-control bg-work-paper px-4 py-3 text-sm" /><input type="password" required autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密碼" className="w-full rounded-xl border border-work-control bg-work-paper px-4 py-3 text-sm" /><button disabled={pending} className="workspace-button workspace-button--primary w-full px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '登入中…' : '登入'}</button></form><button onClick={() => { setResetEmail(email); setResetMode(true); setMessage(''); }} className="workspace-button mt-4 text-sm px-2 py-1">忘記密碼？</button>{message && <p className="mt-4 text-sm text-work-warning">{message}</p>}</>}</section></main>;
+  return <main className="flex min-h-screen items-center justify-center bg-work-canvas p-6 text-work-ink"><section className="auth-card w-full max-w-md p-6 sm:p-8"><h1 className="workspace-heading text-3xl font-semibold text-work-link">影視製片控制台</h1>{resetMode ? <><p className="mt-2 text-sm text-work-muted">輸入既有帳號的 Email，我們會寄出重設連結。</p><form onSubmit={(event) => { event.preventDefault(); void requestReset(); }} className="mt-6 space-y-4"><input type="email" required autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-work-control bg-work-paper px-4 py-3 text-sm" /><button disabled={pending} className="workspace-button workspace-button--primary w-full px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '寄送中…' : '寄送重設連結'}</button></form>{message && <p className="mt-4 text-sm text-work-warning">{message}</p>}<button onClick={() => { setResetMode(false); setMessage(''); }} className="workspace-button mt-6 text-sm px-2 py-1">← 回到登入</button></> : <><p className="mt-2 text-sm text-work-muted">此控制台為私人單人使用，請以既有帳號登入。</p>{googleEnabled && <a href="/api/auth/google" className="workspace-button mt-6 block w-full px-4 py-3 text-center text-sm font-bold">使用 Google 帳號登入</a>}<form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="mt-6 space-y-4"><input type="email" required autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="電子郵件" className="w-full rounded-xl border border-work-control bg-work-paper px-4 py-3 text-sm" /><input type="password" required autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密碼" className="w-full rounded-xl border border-work-control bg-work-paper px-4 py-3 text-sm" /><button disabled={pending} className="workspace-button workspace-button--primary w-full px-4 py-3 text-sm font-bold disabled:opacity-60">{pending ? '登入中…' : '登入'}</button></form><button onClick={() => { setResetEmail(email); setResetMode(true); setMessage(''); }} className="workspace-button mt-4 text-sm px-2 py-1">忘記密碼？</button>{message && <p className="mt-4 text-sm text-work-warning">{message}</p>}</>}</section></main>;
 }
 
 function SecurityCheckError({ onSignOut }: { onSignOut: () => void }) {
@@ -111,44 +113,47 @@ function MfaChallenge({ factorId, onVerified, onSignOut }: { factorId: string; o
 }
 
 function ProjectBoard({ projectId, userId, onBack, destination }: { projectId: string; userId: string; onBack: () => void; destination?: ProjectDestination }) {
-  const { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, setDeliveryDate, recordCoveredDelivery, updateSettlementBatch, reopenSettlementBatch, withdrawInvoice, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask, updatePlannedCloseDate, setTaskWaiting } = useProjectData(projectId, userId);
+  const { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, setDeliveryDate, recordCoveredDelivery, updateSettlementBatch, reopenSettlementBatch, withdrawInvoice, updateProjectTemplate, addTask, deleteTask, updateTask, updatePlannedCloseDate, setTaskWaiting } = useProjectData(projectId, userId);
   const [activeModule, setActiveModule] = useState<ModuleId>(destination?.moduleId ?? 'Scripting');
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [addingStatus, setAddingStatus] = useState<string | null>(null);
-  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const { visible: amountsVisible } = useAmountVisibility();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(destination?.taskId ?? null);
-  const [selectedMobileStatus, setSelectedMobileStatus] = useState<string | null>(null);
-  if (loading || !project) return <main className="min-h-screen bg-work-canvas p-12 text-center text-work-muted">專案載入中…</main>;
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    if (!selectedTaskId) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedTaskId(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [selectedTaskId]);
+  if (loading || !project) return <main className="project-board min-h-screen p-4 md:p-8"><header className="workspace-header"><button onClick={onBack} className="workspace-button px-3 py-2">← 返回大廳</button><h1 className="workspace-heading">專案工作區</h1></header><section className="loading-paper" role="status">專案載入中…</section></main>;
 
   const syncLabel = syncStatus === 'synced' ? '已同步至雲端' : syncStatus === 'syncing' ? '同步中…' : syncStatus === 'conflict' ? '偵測到同步衝突' : '同步失敗';
   const syncColor = syncStatus === 'synced' ? 'text-work-positive' : syncStatus === 'syncing' ? 'text-work-warning' : 'text-work-danger';
   const lastSyncedLabel = lastSyncedAt ? new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit' }).format(new Date(lastSyncedAt)) : null;
   const syncFeedback = <div className="mt-1 flex items-center gap-2 text-xs"><span className={syncColor}>{syncLabel}{syncStatus === 'synced' && lastSyncedLabel ? ` · ${lastSyncedLabel}` : ''}</span>{syncStatus === 'error' && <button onClick={() => void retrySync()} className="workspace-button px-2 py-1">重新同步</button>}</div>;
   const conflictFeedback = syncStatus === 'conflict' && syncConflict && <SyncConflictPanel conflict={syncConflict} message={syncError} onResolve={(choice) => void resolveConflict(choice)} />;
-  if (activeModule === 'Finance') return <ProjectFinancePanel project={project} updateBudget={updateBudget} addMonthlySettlement={addMonthlySettlement} updateMonthlySettlement={updateMonthlySettlement} deleteMonthlySettlement={deleteMonthlySettlement} deleteTask={deleteTask} updateTask={updateTask} updateSettlementBatch={updateSettlementBatch} addTask={addTask} onBackToTasks={() => setActiveModule('Scripting')} onBack={onBack} syncFeedback={syncFeedback} conflictFeedback={conflictFeedback} saving={syncStatus === 'syncing'} />;
+  if (activeModule === 'Finance') return <ProjectFinancePanel
+    project={project} updateBudget={updateBudget} deleteTask={deleteTask} updateTask={updateTask} addTask={addTask}
+    onBackToTasks={() => setActiveModule('Scripting')} onBack={onBack}
+    syncFeedback={syncFeedback} conflictFeedback={conflictFeedback} saving={syncStatus === 'syncing'}
+    settlementPanel={<ProjectSettlementPanel project={project} updateDefaultUnitPrice={updateDefaultUnitPrice} closeMonth={closeMonth}
+      updateSettlementBatch={updateSettlementBatch} reopenSettlementBatch={reopenSettlementBatch} withdrawInvoice={withdrawInvoice}
+      setDeliveryDate={setDeliveryDate} recordCoveredDelivery={recordCoveredDelivery} />} />;
 
-  const productionModules = WORKSPACE_MODULES.filter((module) => module.id !== 'Finance');
   const productionTasks = project.tasks.filter((task) => task.moduleId !== 'Finance' && !task.archivedAt);
-  const completedTasks = productionTasks.filter((task) => {
-    const statuses = project.moduleConfigs.find((config) => config.moduleId === task.moduleId)?.customStatuses ?? [];
-    return task.status === statuses.at(-1);
+  const activeTasks = productionTasks.filter((task) => {
+    const stages = project.moduleConfigs.find((config) => config.moduleId === task.moduleId)?.customStatuses;
+    return task.status !== stages?.at(-1);
   });
-  const completionRate = productionTasks.length ? Math.round((completedTasks.length / productionTasks.length) * 100) : 0;
-  const moduleSummaries = productionModules.map((module) => {
-    const tasks = productionTasks.filter((task) => task.moduleId === module.id);
-    const statuses = project.moduleConfigs.find((config) => config.moduleId === module.id)?.customStatuses ?? [];
-    const completed = tasks.filter((task) => task.status === statuses.at(-1)).length;
-    return { ...module, total: tasks.length, completed };
-  });
+  const completionRate = productionTasks.length ? Math.round(100 * (productionTasks.length - activeTasks.length) / productionTasks.length) : 0;
   const statuses = project.moduleConfigs.find((config) => config.moduleId === activeModule)?.customStatuses ?? [];
-  const mobileStatus = selectedMobileStatus && statuses.includes(selectedMobileStatus) ? selectedMobileStatus : statuses[0] ?? '';
   const selectedTask = productionTasks.find((task) => task.id === selectedTaskId) ?? null;
   const waiting = new Set(project.waitingForClientTaskIds);
-  const createTask = (status: string) => {
-    const title = newTaskTitle.trim();
+  const createTask = (status: string, title: string) => {
     if (!title) return;
     if (project.projectType === 'shortVideoEditing') {
-      const input = window.prompt(`此短影音要建立收入項目嗎？\n輸入單支收入金額（專案預設 ${project.defaultUnitPrice || 1000}）；清空或取消則只建立任務。`, String(project.defaultUnitPrice || 1000));
+      const input = amountsVisible ? window.prompt(`此短影音要建立收入項目嗎？\n輸入單支收入金額（專案預設 ${project.defaultUnitPrice || 1000}）；清空或取消則只建立任務。`, String(project.defaultUnitPrice || 1000)) : (window.confirm('以專案預設單價建立收入項目？取消可只建立任務。') ? String(project.defaultUnitPrice || 1000) : null);
       const amount = input?.trim() ? Number(input) : undefined;
       addTask(title, activeModule, status, amount !== undefined && Number.isFinite(amount) && amount >= 0 ? 'income' : undefined, amount !== undefined && Number.isFinite(amount) && amount >= 0 ? amount : undefined);
     } else if (project.projectType === 'programPlanning') {
@@ -156,8 +161,6 @@ function ProjectBoard({ projectId, userId, onBack, destination }: { projectId: s
       const amount = input?.trim() ? Number(input) : undefined;
       addTask(title, activeModule, status, undefined, undefined, amount !== undefined && Number.isFinite(amount) && amount >= 0 ? amount : undefined);
     } else addTask(title, activeModule, status);
-    setNewTaskTitle('');
-    setAddingStatus(null);
   };
   const confirmDeleteTask = (taskTitle: string, taskId: string) => {
     if (window.confirm(`確定要刪除任務「${taskTitle}」嗎？若有連動財務任務也會一併刪除。`)) {
@@ -175,18 +178,25 @@ function ProjectBoard({ projectId, userId, onBack, destination }: { projectId: s
   };
 
   return <main className="project-board min-h-screen bg-work-canvas p-4 text-work-ink md:p-8"><div className="mx-auto max-w-[100rem]">
-    <header className="workspace-header project-board__header mb-6 flex items-center gap-4"><button onClick={onBack} disabled={syncStatus === 'syncing'} className="workspace-button px-3 py-1.5 text-xs disabled:opacity-50">← 返回大廳</button><div><div className="project-board__title-row flex items-center gap-3"><h1 className="workspace-heading font-semibold">{project.name}</h1><button onClick={rename} className="workspace-button text-xs px-2 py-1">重新命名</button><label className="text-xs text-work-muted">工作模板<select value={project.projectType} onChange={(event) => changeTemplate(event.target.value as ProjectType)} className="ml-2 rounded border border-work-control bg-work-surface px-2 py-1 text-xs text-work-ink">{PROJECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label></div>{syncFeedback}</div></header>
-    <ProjectWorkspaceNavigation activeModule={activeModule} onChange={(moduleId) => { setActiveModule(moduleId); setAddingStatus(null); }} />
+    <header className="workspace-header project-head">
+      <div><button onClick={onBack} disabled={syncStatus === 'syncing'} className="workspace-button back-link">← 返回大廳</button><h1 className="workspace-heading font-semibold">{project.name}</h1></div>
+      <div>{syncFeedback}<details className="project-options"><summary>專案設定</summary><div>
+        <button onClick={rename} className="workspace-button px-2 py-1">重新命名</button>
+        <label>工作模板<select value={project.projectType} onChange={(event) => changeTemplate(event.target.value as ProjectType)}>{PROJECT_TYPES.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
+        <label>預計結案日<input type="date" value={project.plannedCloseDate ?? ''} onChange={(event) => updatePlannedCloseDate(event.target.value)} /></label>
+        <label className="density-setting"><input type="checkbox" checked={compact} onChange={(event) => setCompact(event.target.checked)} />緊湊清單</label>
+        <AmountToggle />
+      </div></details></div>
+    </header>
     {conflictFeedback}
-    <ProjectSummary completionRate={completionRate} completedCount={completedTasks.length} totalCount={productionTasks.length} modules={moduleSummaries} plannedCloseDate={project.plannedCloseDate} onPlannedCloseDateChange={updatePlannedCloseDate} />
-    <ProjectSettlementPanel project={project} updateDefaultUnitPrice={updateDefaultUnitPrice} closeMonth={closeMonth} updateSettlementBatch={updateSettlementBatch} reopenSettlementBatch={reopenSettlementBatch} withdrawInvoice={withdrawInvoice} setDeliveryDate={setDeliveryDate} recordCoveredDelivery={recordCoveredDelivery} />
-    <section className="project-task-board space-y-4"><div className="flex items-center justify-between"><div><h2 className="text-sm font-bold">{WORKSPACE_MODULES.find((module) => module.id === activeModule)?.name}</h2><p className="mt-1 hidden text-xs text-work-muted md:block">拖曳任務卡到其他欄位，或使用卡片內的狀態選單調整流程。</p><p className="mt-1 text-xs text-work-muted md:hidden">從下方選擇流程階段；任務卡內也可直接變更狀態。</p></div></div>
-      <label className="block rounded-xl border border-work-control bg-work-surface p-3 text-xs font-bold text-work-muted md:hidden">目前流程階段<select value={mobileStatus} onChange={(event) => { setSelectedMobileStatus(event.target.value); setAddingStatus(null); }} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-3 text-base font-semibold text-work-ink">{statuses.map((status) => <option key={status} value={status}>{status}（{project.tasks.filter((task) => task.moduleId === activeModule && task.status === status && !task.archivedAt).length}）</option>)}</select></label>
-      <div className="project-status-columns grid gap-4 md:grid-cols-3">{statuses.map((status) => { const tasks = project.tasks.filter((task) => task.moduleId === activeModule && task.status === status && !task.archivedAt); return <section key={status} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (draggedTaskId) updateTask(draggedTaskId, { status }); setDraggedTaskId(null); }} className={`${status === mobileStatus ? 'flex' : 'hidden'} min-h-[420px] flex-col rounded-xl border p-4 transition-colors md:flex md:min-h-[500px] ${draggedTaskId ? 'border-work-link bg-work-selected' : 'border-work-line bg-work-surface'}`}><header className="mb-4 flex justify-between border-b border-work-line pb-2 text-xs font-bold text-work-muted"><span>{status}</span><span>{tasks.length}</span></header><div className="flex-1 space-y-2">{tasks.map((task) => <article key={task.id} draggable onDragStart={() => setDraggedTaskId(task.id)} onDragEnd={() => setDraggedTaskId(null)} onClick={() => setSelectedTaskId(task.id)} className="group cursor-grab rounded-lg border border-work-line bg-work-surface p-3 active:cursor-grabbing"><div className="flex items-start gap-2"><span title="拖曳任務" className="cursor-grab select-none text-work-muted group-active:cursor-grabbing">⋮⋮</span><input defaultValue={task.title} onClick={(event) => event.stopPropagation()} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== task.title) updateTask(task.id, { title }); }} onKeyDown={(event) => event.key === 'Enter' && event.currentTarget.blur()} aria-label={`任務名稱：${task.title}`} className="min-w-0 flex-1 bg-transparent text-sm" /><button onClick={(event) => { event.stopPropagation(); confirmDeleteTask(task.title, task.id); }} aria-label={`刪除任務 ${task.title}`} className="workspace-button workspace-button--danger p-1 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 px-2 py-1">×</button></div>{waiting.has(task.id) && status !== statuses.at(-1) && <p className="mt-2 text-xs text-work-link">等客戶回覆</p>}{task.assignee && <p className="mt-2 text-xs text-work-muted">負責人：{task.assignee}</p>}{task.dueDate && <p className="mt-1 text-xs text-work-warning">截止：{task.dueDate}</p>}<label onClick={(event) => event.stopPropagation()} className="mt-3 block border-t border-work-line pt-3 text-xs text-work-muted">任務狀態<select value={task.status} onChange={(event) => updateTask(task.id, { status: event.target.value })} className="mt-1 w-full rounded border border-work-control bg-work-paper px-2 py-1.5 text-sm text-work-ink">{statuses.map((option) => <option key={option} value={option}>{option}</option>)}</select></label></article>)}{tasks.length === 0 && <p className="py-12 text-center text-xs text-work-muted">此階段尚無任務，可從下方新增</p>}</div>{addingStatus === status ? <form onSubmit={(event) => { event.preventDefault(); createTask(status); }} className="mt-3 space-y-2"><input autoFocus value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.target.value)} placeholder={`新增至「${status}」`} aria-label={`新增至 ${status}`} className="w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm" /><div className="flex gap-2"><button type="submit" disabled={!newTaskTitle.trim()} className="workspace-button workspace-button--primary px-3 py-1.5 text-xs font-bold disabled:opacity-50">新增</button><button type="button" onClick={() => { setAddingStatus(null); setNewTaskTitle(''); }} className="workspace-button px-3 py-1.5 text-xs">取消</button></div></form> : <button onClick={() => { setAddingStatus(status); setNewTaskTitle(''); }} className="workspace-button mt-3 w-full px-3 py-2 text-sm">＋ 新增任務</button>}</section>; })}</div>
-    </section>
-    {selectedTask && <aside className="fixed inset-y-0 right-0 z-20 w-full max-w-md overflow-y-auto border-l border-work-control bg-work-surface p-6 shadow-2xl"><div className="mb-6 flex items-start justify-between gap-4"><div><p className="text-xs text-work-link">任務詳情</p><h2 className="mt-1 text-xl font-black">{selectedTask.title}</h2></div><button onClick={() => setSelectedTaskId(null)} aria-label="關閉任務詳情" className="workspace-button p-2 px-2 py-1">×</button></div><div className="space-y-5"><label className="block text-sm font-semibold">任務名稱<input defaultValue={selectedTask.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== selectedTask.title) updateTask(selectedTask.id, { title }); }} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="block text-sm font-semibold">詳細敘述<textarea defaultValue={selectedTask.description ?? ''} onBlur={(event) => updateTask(selectedTask.id, { description: event.target.value.trim() || undefined })} rows={5} placeholder="記錄拍攝需求、交付規格或工作備註…" className="mt-2 w-full resize-y rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="block text-sm font-semibold">負責人<input defaultValue={selectedTask.assignee ?? ''} onBlur={(event) => updateTask(selectedTask.id, { assignee: event.target.value.trim() || undefined })} placeholder="例如：導演、剪輯師" className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="block text-sm font-semibold">截止日期<input type="date" defaultValue={selectedTask.dueDate ?? ''} onChange={(event) => updateTask(selectedTask.id, { dueDate: event.target.value || undefined })} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="flex items-center gap-2 text-sm font-semibold">
+    <ProjectSummary completionRate={completionRate} activeCount={activeTasks.length}
+      nextDue={activeTasks.flatMap((task) => task.dueDate ? [task.dueDate] : []).sort()[0]} />
+    <ProjectWorkspaceNavigation activeModule={activeModule} onChange={setActiveModule} />
+    <ProductionTasks key={activeModule} compact={compact} statuses={statuses} tasks={productionTasks.filter((task) => task.moduleId === activeModule)}
+      waiting={waiting} onOpen={setSelectedTaskId} onMove={(id, status) => updateTask(id, { status })} onAdd={createTask} />
+    {selectedTask && <aside key={selectedTask.id} className="fixed inset-y-0 right-0 z-20 w-full max-w-md overflow-y-auto border-l border-work-control bg-work-surface p-6 shadow-2xl"><div className="mb-6 flex items-start justify-between gap-4"><div><p className="text-xs text-work-link">任務詳情</p><h2 className="mt-1 text-xl font-black">{selectedTask.title}</h2></div><button onClick={() => setSelectedTaskId(null)} aria-label="關閉任務詳情" className="workspace-button p-2 px-2 py-1">×</button></div><div className="space-y-5"><label className="block text-sm font-semibold">任務名稱<input defaultValue={selectedTask.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== selectedTask.title) updateTask(selectedTask.id, { title }); }} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="block text-sm font-semibold">詳細敘述<textarea defaultValue={selectedTask.description ?? ''} onBlur={(event) => updateTask(selectedTask.id, { description: event.target.value.trim() || undefined })} rows={5} placeholder="記錄拍攝需求、交付規格或工作備註…" className="mt-2 w-full resize-y rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="block text-sm font-semibold">負責人<input defaultValue={selectedTask.assignee ?? ''} onBlur={(event) => updateTask(selectedTask.id, { assignee: event.target.value.trim() || undefined })} placeholder="例如：導演、剪輯師" className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="block text-sm font-semibold">截止日期<input type="date" defaultValue={selectedTask.dueDate ?? ''} onChange={(event) => updateTask(selectedTask.id, { dueDate: event.target.value || undefined })} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal" /></label><label className="flex items-center gap-2 text-sm font-semibold">
       <input type="checkbox" checked={waiting.has(selectedTask.id)} onChange={(event) => setTaskWaiting(selectedTask.id, event.target.checked)} className="size-4 accent-work-primary" />
       等客戶回覆
-    </label><label className="block text-sm font-semibold">單支計價<input type="number" min="0" defaultValue={selectedTask.unitPrice ?? project.defaultUnitPrice} onBlur={(event) => updateTask(selectedTask.id, { unitPrice: Math.max(0, Number(event.target.value) || 0) })} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal text-work-positive" /><span className="mt-1 block text-xs font-normal text-work-muted">留用專案預設價格，或在這支影片個別調整。</span></label>{selectedTask.deliveredAt && <p className="rounded-lg bg-work-paper px-3 py-2 text-xs text-work-muted">交付日：{selectedTask.deliveredAt.slice(0, 10)}</p>}<label className="block text-sm font-semibold">任務狀態<select value={selectedTask.status} onChange={(event) => updateTask(selectedTask.id, { status: event.target.value })} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal">{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label></div></aside>}
+    </label><label className="block text-sm font-semibold">單支計價<AmountInput min="0" defaultValue={selectedTask.unitPrice ?? project.defaultUnitPrice} onBlur={(event) => updateTask(selectedTask.id, { unitPrice: Math.max(0, Number(event.target.value) || 0) })} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal text-work-positive" /><span className="mt-1 block text-xs font-normal text-work-muted">留用專案預設價格，或在這支影片個別調整。</span></label>{selectedTask.deliveredAt && <p className="rounded-lg bg-work-paper px-3 py-2 text-xs text-work-muted">交付日：{selectedTask.deliveredAt.slice(0, 10)}</p>}<label className="block text-sm font-semibold">任務狀態<select value={selectedTask.status} onChange={(event) => updateTask(selectedTask.id, { status: event.target.value })} className="mt-2 w-full rounded-lg border border-work-control bg-work-paper px-3 py-2 text-sm font-normal">{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label><button onClick={() => confirmDeleteTask(selectedTask.title, selectedTask.id)} className="workspace-button workspace-button--danger px-3 py-2 text-sm">刪除任務</button></div></aside>}
   </div></main>;
 }

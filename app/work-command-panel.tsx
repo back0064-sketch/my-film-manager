@@ -69,6 +69,7 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
   onOpenProject: OpenProject;
   financeOnly: boolean;
 }) {
+  const [moreFilters, setMoreFilters] = useState(false);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
   const [receivableFilter, setReceivableFilter] = useState<ReceivableFilter>('all');
   const today = taipeiToday();
@@ -125,15 +126,16 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
           </div>
           <div className="flex flex-wrap gap-1" role="group" aria-label="工作篩選">
               {taskFilters.map(([value, label]) => (
-                <FilterButton key={value} active={taskFilter === value} onClick={() => setTaskFilter(value)}>
+                <FilterButton key={value} mobileHidden={!moreFilters && ['unscheduled','waiting','closing'].includes(value) && taskFilter !== value} active={taskFilter === value} onClick={() => setTaskFilter(value)}>
                   {label}{value !== 'all' && ` ${value === 'closing' ? closing.length : counts.tasks[value]}`}
                 </FilterButton>
               ))}
+            <button type="button" aria-expanded={moreFilters} onClick={() => setMoreFilters(!moreFilters)} className="workspace-filter px-2 text-sm sm:hidden">{moreFilters ? '收合' : '更多'}</button>
           </div>
           {taskFilter === 'closing' && <p className="mt-2 text-xs text-work-muted">顯示 7 日內及已過預計結案日的專案。</p>}
           {visibleCount === 0 ? (
             <p className="py-8 text-center text-xs text-work-muted">
-              {taskFilter === 'closing' ? '目前沒有即將結案的專案。可在專案摘要設定預計結案日。' : '這個篩選目前沒有待辦。'}
+              {taskFilter === 'closing' ? '目前沒有即將結案的專案。可在專案設定填寫預計結案日。' : '這個篩選目前沒有待辦。'}
             </p>
           ) : (
             <div className="workspace-row-list mt-3">
@@ -141,7 +143,7 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
                 ? closing.slice(0, WORK_PREVIEW_LIMIT).map((project) => (
                   <button key={project.id} type="button" onClick={() => onOpenProject(project.id)} className={rowClass}>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">{project.name}</span>
+                      <span className="block truncate text-[16px] font-semibold">{project.name}</span>
                       {project.clientName && <span className="mt-1 block truncate text-xs text-work-muted">{project.clientName}</span>}
                     </span>
                     <span className="shrink-0 text-xs text-work-muted">
@@ -197,9 +199,9 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
   );
 }
 
-function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function FilterButton({ active, onClick, children, mobileHidden }: { mobileHidden?: boolean; active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} className="workspace-filter min-h-9 px-2 py-1.5 text-xs font-semibold sm:min-h-8">
+    <button type="button" aria-pressed={active} onClick={onClick} className={`workspace-filter min-h-11 px-2 py-1.5 text-[13px] font-semibold sm:min-h-9 ${mobileHidden ? 'hidden sm:block' : ''}`}>
       {children}
     </button>
   );
@@ -207,10 +209,10 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
 
 function CommandTask({ task, today, onOpenProject }: { task: WorkCommandItem; today: string; onOpenProject: OpenProject }) {
   const urgency = workCommandUrgency(task, today);
-  return <button type="button" onClick={() => onOpenProject(task.projectId, { moduleId: task.moduleId, taskId: task.taskId })} className={rowClass}><span className={`mt-0.5 shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold ${urgencyClass(urgency)}`}>{urgencyLabel(urgency)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{task.title}</span><span className="mt-1 block truncate text-xs text-work-muted">{task.projectName}{task.clientName ? ` · ${task.clientName}` : ''} · {task.status}{task.waitingForClient && ' · 等客戶回覆'}</span></span><span className="shrink-0 text-xs text-work-muted">{formatDate(task.dueDate)}</span></button>;
+  return <button type="button" onClick={() => onOpenProject(task.projectId, { moduleId: task.moduleId, taskId: task.taskId })} className={rowClass}><span className={`mt-0.5 shrink-0 rounded-md px-2 py-1 text-[13px] font-medium ${urgencyClass(urgency)}`}>{urgencyLabel(urgency)}</span><span className="min-w-0 flex-1"><span className="block truncate text-[16px] font-semibold">{task.title}</span><span className="mt-1 block truncate text-xs text-work-muted">{task.projectName}{task.clientName ? ` · ${task.clientName}` : ''} · {task.status}{task.waitingForClient && ' · 等客戶回覆'}</span></span><span className="shrink-0 text-xs text-work-muted">{formatDate(task.dueDate)}</span></button>;
 }
 
 function ReceivableRow({ item, today, showAmounts, onOpenProject }: { item: ReceivableItem; today: string; showAmounts: boolean; onOpenProject: OpenProject }) {
   const urgency = receivableUrgency(item, today);
-  return <button type="button" onClick={() => onOpenProject(item.projectId, { moduleId: 'Finance' })} className={rowClass}><span className={`mt-0.5 shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold ${receivableClass(urgency)}`}>{receivableLabel(urgency)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-work-muted">{item.projectName} · {item.status === 'invoiced' ? '已請款' : item.awaitingDelivery ? '待交付' : '待請款'}{item.invoiceNumber ? ` · ${item.invoiceNumber}` : ''}</span></span><span className="shrink-0 text-right text-xs text-work-muted tabular-nums">{showAmounts && <span className="mb-1 block">{money(item.amount)}</span>}<span className="block">{formatDate(item.dueDate)}</span></span></button>;
+  return <button type="button" onClick={() => onOpenProject(item.projectId, { moduleId: 'Finance' })} className={rowClass}><span className={`mt-0.5 shrink-0 rounded-md px-2 py-1 text-[13px] font-medium ${receivableClass(urgency)}`}>{receivableLabel(urgency)}</span><span className="min-w-0 flex-1"><span className="block truncate text-[16px] font-semibold">{item.title}</span><span className="mt-1 block truncate text-xs text-work-muted">{item.projectName} · {item.status === 'invoiced' ? '已請款' : item.awaitingDelivery ? '待交付' : '待請款'}{item.invoiceNumber ? ` · ${item.invoiceNumber}` : ''}</span></span><span className="shrink-0 text-right text-xs text-work-muted tabular-nums">{showAmounts && <span className="mb-1 block">{money(item.amount)}</span>}<span className="block">{formatDate(item.dueDate)}</span></span></button>;
 }

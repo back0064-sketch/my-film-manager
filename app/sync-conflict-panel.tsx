@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from './amount-visibility';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
 import type { SyncConflict } from '@/hooks/useProjectData';
 
@@ -15,7 +16,7 @@ function snapshot(project: SyncConflict['local']) {
 function VersionCard({ label, project, accent }: { label: string; project: SyncConflict['local'] | null; accent: string }) {
   if (!project) return <div className="rounded-xl border border-work-line bg-work-paper p-4"><p className="text-sm font-bold text-work-muted">{label}</p><p className="mt-4 text-xs text-work-muted">找不到雲端版本，可能已被刪除。</p></div>;
   const data = snapshot(project);
-  return <div className={`rounded-xl border ${accent} bg-work-paper p-4`}><p className="text-sm font-bold">{label}</p><p className="mt-1 truncate text-xs text-work-muted">{project.name}</p><dl className="mt-4 grid grid-cols-2 gap-3 text-xs"><div><dt className="text-work-muted">任務</dt><dd className="mt-1 text-base font-bold">{data.tasks}</dd></div><div><dt className="text-work-muted">已完成</dt><dd className="mt-1 text-base font-bold">{data.completed}</dd></div><div><dt className="text-work-muted">待收</dt><dd className="mt-1 text-work-warning">NT$ {data.receivable.toLocaleString()}</dd></div><div><dt className="text-work-muted">待付</dt><dd className="mt-1 text-work-danger">NT$ {data.payable.toLocaleString()}</dd></div></dl><p className="mt-4 break-all text-[10px] text-work-muted">版本：{data.version ?? '尚未同步'}</p></div>;
+  return <div className={`rounded-xl border ${accent} bg-work-paper p-4`}><p className="text-sm font-bold">{label}</p><p className="mt-1 truncate text-xs text-work-muted">{project.name}</p><dl className="mt-4 grid grid-cols-2 gap-3 text-xs"><div><dt className="text-work-muted">任務</dt><dd className="mt-1 text-base font-bold">{data.tasks}</dd></div><div><dt className="text-work-muted">已完成</dt><dd className="mt-1 text-base font-bold">{data.completed}</dd></div><div><dt className="text-work-muted">待收</dt><dd className="mt-1 text-work-warning"><Amount value={data.receivable} /></dd></div><div><dt className="text-work-muted">待付</dt><dd className="mt-1 text-work-danger"><Amount value={data.payable} /></dd></div></dl><p className="mt-4 break-all text-[10px] text-work-muted">版本：{data.version ?? '尚未同步'}</p></div>;
 }
 
 export function SyncConflictPanel({ conflict, message, onResolve }: { conflict: SyncConflict; message?: string | null; onResolve: (choice: 'cloud' | 'local') => void }) {

@@ -76,19 +76,22 @@ async function mockApi(page: Page) {
   });
 }
 
-test('手機以狀態選單切換單欄任務，不需要水平滑動', async ({ page }) => {
+test('手機預設清單可直接移動任務，看板維持單一橫列', async ({ page }) => {
   await mockApi(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('heading', { name: project.name }).click();
 
-  const selector = page.getByLabel('目前流程階段');
-  await expect(selector).toBeVisible();
-  await selector.selectOption('修改中');
-
-  await expect(page.getByLabel('任務名稱：修改影片')).toBeVisible();
-  await expect(page.getByLabel('任務名稱：第一支影片')).toBeHidden();
+  const task = page.getByRole('button', { name: '修改影片', exact: true });
+  await expect(task).toBeVisible();
+  expect((await task.boundingBox())!.y).toBeLessThan(600);
+  await page.getByLabel('修改影片的任務狀態').selectOption('剪輯中');
+  await expect(page.getByLabel('修改影片的任務狀態')).toHaveValue('剪輯中');
+  await page.getByRole('button', { name: '看板', exact: true }).click();
+  const columns = await page.locator('.stage-column').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  expect(columns.length).toBeGreaterThan(3);
+  expect(new Set(columns).size).toBe(1);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(overflow).toBe(false);
 });
@@ -98,6 +101,7 @@ test('刪除客戶會呼叫 API 並從大廳移除客戶', async ({ page }) => {
   page.on('dialog', (dialog) => dialog.accept());
   await page.goto('/');
   await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
+  await page.getByLabel('管理測試客戶').click();
   await page.getByRole('button', { name: '刪除客戶 測試客戶' }).click();
 
   await expect.poll(() => page.evaluate(() => (window as typeof window & { __deletedClient?: boolean }).__deletedClient)).toBe(true);
@@ -118,6 +122,12 @@ test('大廳財務金額預設隱藏並可手動顯示', async ({ page }) => {
   await expect(financeSummary.getByText('待付 NT$ 7,890')).toBeVisible();
   await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await expect(page.getByText('待收 NT$ 123,456 · 待付 NT$ 7,890')).toBeVisible();
+  await page.getByRole('heading', { name: project.name }).click();
+  await page.getByRole('button', { name: '財務帳目', exact: true }).click();
+  await page.getByRole('button', { name: '隱藏金額' }).click();
+  await expect(page.getByText(/NT\$/)).toHaveCount(0);
+  await page.getByRole('button', { name: /返回大廳/ }).click();
+  await expect(page.getByText(/待收 NT\$/)).toHaveCount(0);
 });
 
 test('每日工作指揮台會優先顯示逾期工作與追款', async ({ page }) => {
@@ -130,7 +140,7 @@ test('每日工作指揮台會優先顯示逾期工作與追款', async ({ page 
   await expect(command.getByText('修改影片').first()).toBeVisible();
   await expect(command.getByText('INV-09')).toBeVisible();
   await command.getByRole('button', { name: /已逾期 修改影片/ }).click();
-  await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible();
+  await expect(page.getByText('製作完成度', { exact: true })).toBeVisible();
 });
 
 test('設定等回覆與結案日後，大廳可篩選並直接開啟工作或追款', async ({ page }) => {
@@ -144,9 +154,12 @@ test('設定等回覆與結案日後，大廳可篩選並直接開啟工作或�
   await expect(waiting).toBeVisible();
   await waiting.check();
   await details.getByRole('button', { name: '關閉任務詳情' }).click();
+  await page.getByText('專案設定', { exact: true }).click();
   await page.getByLabel('預計結案日').fill('2026-11-23');
   await page.getByRole('button', { name: /返回大廳/ }).click();
 
+  await expect(work).toBeVisible();
+  if ((page.viewportSize()?.width ?? 0) < 640) await work.getByRole('button', { name: '更多', exact: true }).click();
   await work.getByRole('button', { name: '等客戶回覆 1' }).click();
   await expect(work.getByRole('button', { name: /修改影片/ })).toBeVisible();
   await work.getByRole('button', { name: '即將結案 1' }).click();
@@ -164,6 +177,7 @@ test('歸檔移出進行中，保留搜尋與追款，也可恢復', async ({ pa
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: '工作區導覽' });
   await nav.getByRole('button', { name: '專案', exact: true }).click();
+  await page.getByLabel(`${project.name}的更多操作`).click();
   await page.getByRole('button', { name: `歸檔 ${project.name}`, exact: true }).click();
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toHaveCount(0);
   await nav.getByRole('button', { name: '工作台', exact: true }).click();
@@ -176,6 +190,7 @@ test('歸檔移出進行中，保留搜尋與追款，也可恢復', async ({ pa
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
   await search.fill('');
   await page.getByRole('button', { name: '已歸檔', exact: true }).click();
+  await page.getByLabel(`${project.name}的更多操作`).click();
   await page.getByRole('button', { name: `恢復 ${project.name}`, exact: true }).click();
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '進行中', exact: true }).click();
@@ -187,7 +202,10 @@ test('財務頁可依實際收付月份顯示月報', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('heading', { name: project.name }).click();
-  await page.getByRole('button', { name: '💰 財務帳目' }).click();
+  await page.getByRole('button', { name: '財務帳目' }).click();
+  await expect(page.getByRole('spinbutton')).toHaveCount(0);
+  await expect(page.getByText(/NT\$/)).toHaveCount(0);
+  await page.getByRole('button', { name: '顯示金額' }).click();
   await page.getByLabel('報表月份').fill('2026-07');
 
   const report = page.getByRole('region', { name: '月份財務報表' });
@@ -204,13 +222,15 @@ test('長期專案可將當月已交付影片結案並從看板封存', async ({
   await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('heading', { name: project.name }).click();
 
+  await page.getByRole('button', { name: '財務帳目', exact: true }).click();
   const settlement = page.getByRole('region', { name: '專案月結' });
   await settlement.getByLabel('結算月份').fill('2026-09');
   await expect(settlement.getByText('1 支待結案')).toBeVisible();
   await settlement.getByRole('button', { name: '完成本月結案' }).click();
 
   await expect(settlement.getByText('2026-09 · 1 支')).toBeVisible();
-  await expect(page.getByLabel('任務名稱：九月已交付')).toBeHidden();
+  await page.getByRole('button', {name: '← 製作任務'}).click();
+  await expect(page.getByRole('button', {name: /已交付 · 1 項/})).toHaveCount(0);
 });
 
 test('雲端較慢時仍會先顯示本機專案與快取內容', async ({ page }) => {
@@ -233,7 +253,7 @@ test('雲端較慢時仍會先顯示本機專案與快取內容', async ({ page 
   await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '專案', exact: true }).click();
   await expect(page.getByRole('heading', { name: project.name })).toBeVisible({ timeout: 1000 });
   await page.getByRole('heading', { name: project.name }).click();
-  await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible({ timeout: 1000 });
+  await expect(page.getByText('製作完成度', { exact: true })).toBeVisible({ timeout: 1000 });
 });
 
 test('大廳切換工作區，設定與新增表單按需顯示', async ({ page }) => {
@@ -287,7 +307,7 @@ test('暖白按鈕平時無框，以膠囊回應滑鼠和鍵盤', async ({ page 
   const create = page.getByRole('button', { name: '新增專案', exact: true });
   const showAmounts = page.getByRole('button', { name: '顯示金額', exact: true });
   for (const button of [create, showAmounts]) {
-    await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(button).toHaveCSS('background-color', button === create ? 'rgb(81, 110, 65)' : 'rgba(0, 0, 0, 0)');
     await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await expect(button).toHaveCSS('border-top-left-radius', '999px');
   }
@@ -332,11 +352,11 @@ test('深色系統設定下，大廳、看板、月結、財務和設定仍採�
 
   await nav.getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('button', { name: project.name, exact: true }).click();
+  await page.getByRole('button', { name: '財務帳目', exact: true }).click();
   const settlement = page.getByRole('region', { name: '專案月結' });
   await expect(settlement).toHaveCSS('background-color', paper);
   await expect(main).toHaveCSS('background-color', canvas);
   await expect(settlement.getByRole('button', { name: '完成本月結案' })).toHaveCSS('border-top-left-radius', '999px');
-  await page.getByRole('button', { name: '💰 財務帳目', exact: true }).click();
   await expect(page.getByRole('region', { name: '月份財務報表' })).toHaveCSS('background-color', paper);
   await expect(main).toHaveCSS('background-color', canvas);
   if ((page.viewportSize()?.width ?? 0) < 600) {
