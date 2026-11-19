@@ -4,6 +4,7 @@ import { projectCacheKey } from '@/lib/client/project-cache';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
 import { closeSettlementMonth, correctUnsettledDeliveryDate, recordDeliveryCoveredByPayment, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject, withdrawSettlementInvoice } from '@/lib/projects/settlement-logic';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
+import { cleanPlannedCloseDate } from '@/lib/projects/work-command';
 import { ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch, Task, TransactionType } from '@/types/project';
 
 export type SyncStatus = 'syncing' | 'synced' | 'error' | 'conflict';
@@ -18,36 +19,46 @@ export function useProjectData(projectId: string, userId: string) {
   const [syncConflict, setSyncConflict] = useState<SyncConflict | null>(null);
   const [readyToSync, setReadyToSync] = useState(false);
   const syncVersion = useRef<string | null>(null);
-  const lastPersistedJson = useRef<string | null>(null);
+  const persistedChangeVersion = useRef(0);
   const localChangeVersion = useRef(0);
   const projectRef = useRef<ProjectData | null>(null);
+  const pendingSave = useRef<Promise<boolean>>(Promise.resolve(true));
 
-  const syncProject = useCallback(async (projectToSync: ProjectData) => {
+  const syncProject = useCallback((projectToSync: ProjectData) => {
     setSyncStatus('syncing');
     setSyncError(null);
-    try {
-      const serialized = JSON.stringify(projectToSync);
-      const saved = await projectApi.save({ ...projectToSync, syncVersion: syncVersion.current ?? undefined });
-      syncVersion.current = saved.syncVersion ?? null;
-      localStorage.setItem(projectCacheKey(userId, projectToSync.id), JSON.stringify(saved));
-      lastPersistedJson.current = serialized;
-      setLastSyncedAt(new Date().toISOString());
-      setSyncStatus('synced');
-      setSyncConflict(null);
-      return true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '同步失敗';
-      setSyncError(message);
-      if (error instanceof ApiClientError && error.status === 409) {
-        setSyncConflict({
-          local: projectToSync,
-          remote: error.details?.conflict?.remoteProject ?? null,
-          detectedAt: new Date().toISOString(),
-        });
-        setSyncStatus('conflict');
-      } else setSyncStatus(message.includes('同步衝突') ? 'conflict' : 'error');
-      return false;
-    }
+    const save = pendingSave.current.then(async () => {
+      // Use the previous save's version when edits arrive while a request is in flight.
+      if (projectRef.current !== projectToSync) return false;
+      try {
+        const changeVersion = localChangeVersion.current;
+        const saved = await projectApi.save({ ...projectToSync, syncVersion: syncVersion.current ?? undefined });
+        syncVersion.current = saved.syncVersion ?? null;
+        persistedChangeVersion.current = changeVersion;
+        if (projectRef.current === projectToSync) {
+          localStorage.setItem(projectCacheKey(userId, projectToSync.id), JSON.stringify(saved));
+          setLastSyncedAt(new Date().toISOString());
+          setSyncStatus('synced');
+          setSyncConflict(null);
+        }
+        return true;
+      } catch (error) {
+        if (projectRef.current !== projectToSync) return false;
+        const message = error instanceof Error ? error.message : '同步失敗';
+        setSyncError(message);
+        if (error instanceof ApiClientError && error.status === 409) {
+          setSyncConflict({
+            local: projectToSync,
+            remote: error.details?.conflict?.remoteProject ?? null,
+            detectedAt: new Date().toISOString(),
+          });
+          setSyncStatus('conflict');
+        } else setSyncStatus(message.includes('同步衝突') ? 'conflict' : 'error');
+        return false;
+      }
+    });
+    pendingSave.current = save;
+    return save;
   }, [userId]);
 
   useEffect(() => {
@@ -55,6 +66,7 @@ export function useProjectData(projectId: string, userId: string) {
 
     async function loadProject() {
       localChangeVersion.current = 0;
+      persistedChangeVersion.current = 0;
       projectRef.current = null;
       const loadVersion = localChangeVersion.current;
       setReadyToSync(false);
@@ -67,7 +79,6 @@ export function useProjectData(projectId: string, userId: string) {
           localProject = cleanProjectData(JSON.parse(cached), projectId);
           if (localProject && !cancelled) {
             projectRef.current = localProject;
-            lastPersistedJson.current = JSON.stringify(localProject);
             setProject(localProject);
             setLoading(false);
           }
@@ -92,13 +103,9 @@ export function useProjectData(projectId: string, userId: string) {
         projectRef.current = nextProject;
         setProject(nextProject);
         localStorage.setItem(cacheKey, JSON.stringify(nextProject));
-        // Keep the pre-edit snapshot when the user changed the cached project
-        // while the cloud request was in flight, so the pending edit is still
-        // picked up once the hook becomes ready to sync.
-        if (!changedDuringLoad) lastPersistedJson.current = JSON.stringify(nextProject);
         if (cloudLoaded) {
           setLastSyncedAt(new Date().toISOString());
-          setSyncStatus('synced');
+          if (!changedDuringLoad) setSyncStatus('synced');
         } else {
           setSyncStatus('error');
         }
@@ -112,24 +119,23 @@ export function useProjectData(projectId: string, userId: string) {
   }, [projectId, userId]);
 
   useEffect(() => {
-    if (!project || loading || !readyToSync) return;
-    const serialized = JSON.stringify(project);
-    if (serialized === lastPersistedJson.current) return;
+    if (!project || loading || !readyToSync || localChangeVersion.current === persistedChangeVersion.current) return;
     const timer = window.setTimeout(async () => {
-      localStorage.setItem(projectCacheKey(userId, projectId), serialized);
+      localStorage.setItem(projectCacheKey(userId, projectId), JSON.stringify(project));
       await syncProject(project);
     }, 600);
     return () => window.clearTimeout(timer);
   }, [loading, project, projectId, readyToSync, syncProject, userId]);
 
   const updateProject = (updater: (current: ProjectData) => ProjectData) => {
+    const current = projectRef.current;
+    if (!current) return;
+    const next = updater(current);
+    if (next === current || JSON.stringify(next) === JSON.stringify(current)) return;
+    projectRef.current = next;
     localChangeVersion.current += 1;
     setSyncStatus('syncing');
-    setProject((current) => {
-      const next = current ? updater(current) : current;
-      projectRef.current = next;
-      return next;
-    });
+    setProject(next);
   };
 
   const retrySync = async () => {
@@ -152,7 +158,7 @@ export function useProjectData(projectId: string, userId: string) {
         projectRef.current = cloud;
         setProject(cloud);
         localStorage.setItem(projectCacheKey(userId, projectId), JSON.stringify(cloud));
-        lastPersistedJson.current = JSON.stringify(cloud);
+        persistedChangeVersion.current = localChangeVersion.current;
         setSyncError(null);
         setSyncStatus('synced');
         setLastSyncedAt(new Date().toISOString());
@@ -243,5 +249,18 @@ export function useProjectData(projectId: string, userId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, setDeliveryDate, recordCoveredDelivery, updateSettlementBatch, reopenSettlementBatch, withdrawInvoice, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
+  const updatePlannedCloseDate = (value: string) => {
+    updateProject((current) => ({ ...current, plannedCloseDate: cleanPlannedCloseDate(value) }));
+  };
+
+  const setTaskWaiting = (taskId: string, waiting: boolean) => {
+    updateProject((current) => {
+      const ids = new Set(current.waitingForClientTaskIds);
+      if (waiting) ids.add(taskId);
+      else ids.delete(taskId);
+      return { ...current, waitingForClientTaskIds: ids.size ? [...ids] : undefined };
+    });
+  };
+
+  return { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, setDeliveryDate, recordCoveredDelivery, updateSettlementBatch, reopenSettlementBatch, withdrawInvoice, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask, updatePlannedCloseDate, setTaskWaiting };
 }

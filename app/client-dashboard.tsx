@@ -9,8 +9,8 @@ import { dashboardCacheKey, readDashboardCache, writeDashboardCache } from '@/li
 import { projectCacheKey, projectCachePrefix } from '@/lib/client/project-cache';
 import { cleanProjectData, createProjectData } from '@/lib/project-data';
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
-import { buildReceivableItems, buildWorkCommandItems } from '@/lib/projects/work-command';
-import { Client, ProjectListItem, PROJECT_TYPES, ProjectType } from '@/types/project';
+import { buildProjectCommandSummary } from '@/lib/projects/work-command';
+import { Client, OpenProject, ProjectListItem, PROJECT_TYPES, ProjectType } from '@/types/project';
 
 const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -20,6 +20,7 @@ function projectListItem(project: ReturnType<typeof createProjectData>, updatedA
     id: project.id,
     name: project.name,
     archivedAt: project.archivedAt,
+    plannedCloseDate: project.plannedCloseDate,
     clientId: null,
     clientName: null,
     updated_at: updatedAt,
@@ -27,8 +28,7 @@ function projectListItem(project: ReturnType<typeof createProjectData>, updatedA
     outstandingAmount: outstandingPayable,
     outstandingReceivable,
     outstandingPayable,
-    workCommandItems: buildWorkCommandItems(project),
-    receivableItems: buildReceivableItems(project),
+    ...buildProjectCommandSummary(project),
   };
 }
 
@@ -36,7 +36,7 @@ function formatUpdatedAt(value: string) {
   return new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }: { userId: string; userEmail?: string; onOpenProject: (id: string) => void; onSignOut: () => void }) {
+export function ClientDashboard({ userId, userEmail, onOpenProject, onSignOut }: { userId: string; userEmail?: string; onOpenProject: OpenProject; onSignOut: () => void }) {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);

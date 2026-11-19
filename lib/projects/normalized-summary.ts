@@ -1,4 +1,4 @@
-import { sortWorkCommandItems } from '@/lib/projects/work-command';
+import { cleanPlannedCloseDate, incomeReceivableState, summarizeCommandItems, taipeiToday } from '@/lib/projects/work-command';
 import { ModuleId, ProjectListItem, ReceivableItem, WorkCommandItem } from '@/types/project';
 
 /**
@@ -18,6 +18,7 @@ export interface NormalizedTaskSummaryRow {
   is_paid: boolean;
   ready_for_collection: boolean;
   invoice_number: string | null;
+  linked_task_id?: string | null;
   transaction_date: string | null;
   updated_at: string | null;
   unit_price: number | string | null;
@@ -48,6 +49,8 @@ export interface ProjectListMetadataRow {
   updated_at: string;
   payload_version?: string | null;
   archived_at?: string | null;
+  planned_close_date?: string | null;
+  waiting_task_ids?: string[] | null;
   clients?: { name: string }[] | { name: string } | null;
 }
 
@@ -66,18 +69,7 @@ function updatedAt(value: string | null | undefined, fallback: string) {
   return value || fallback;
 }
 
-function sortReceivables(items: ReceivableItem[]) {
-  return [...items].sort((a, b) => {
-    const aDue = a.dueDate?.slice(0, 10) ?? '';
-    const bDue = b.dueDate?.slice(0, 10) ?? '';
-    if (aDue && bDue && aDue !== bDue) return aDue.localeCompare(bDue);
-    if (aDue && !bDue) return -1;
-    if (!aDue && bDue) return 1;
-    return b.updatedAt.localeCompare(a.updatedAt);
-  });
-}
-
-function asWorkItem(row: NormalizedTaskSummaryRow, project: ProjectListMetadataRow): WorkCommandItem {
+function asWorkItem(row: NormalizedTaskSummaryRow, project: ProjectListMetadataRow, waiting: Set<string>): WorkCommandItem {
   return {
     taskId: row.task_id,
     projectId: project.id,
@@ -87,6 +79,7 @@ function asWorkItem(row: NormalizedTaskSummaryRow, project: ProjectListMetadataR
     status: row.status,
     moduleId: moduleId(row.module_id),
     dueDate: row.due_date || undefined,
+    waitingForClient: waiting.has(row.task_id) || undefined,
     updatedAt: updatedAt(row.updated_at, project.updated_at),
   };
 }
@@ -123,6 +116,7 @@ export function buildNormalizedProjectList(
   metadata: ProjectListMetadataRow[],
   tasks: NormalizedTaskSummaryRow[],
   batches: NormalizedBatchSummaryRow[],
+  day = taipeiToday(),
 ): ProjectListItem[] {
   const tasksByProject = new Map<string, NormalizedTaskSummaryRow[]>();
   const batchesByProject = new Map<string, NormalizedBatchSummaryRow[]>();
@@ -151,9 +145,10 @@ export function buildNormalizedProjectList(
     const outstandingBatches = projectBatches
       .filter((batch) => batch.status !== 'paid' && amount(batch.total) > 0)
       .reduce((sum, batch) => sum + amount(batch.total), 0);
-    const workItems = projectTasks
+    const waiting = new Set(Array.isArray(project.waiting_task_ids) ? project.waiting_task_ids : []);
+    const workItems = project.archived_at ? [] : projectTasks
       .filter((task) => task.module_id !== 'Finance' && !task.archived_at && !task.is_completed)
-      .map((task) => asWorkItem(task, project));
+      .map((task) => asWorkItem(task, project, waiting));
     const receivableItems: ReceivableItem[] = [
       ...projectBatches
         .filter((batch) => batch.status !== 'paid' && amount(batch.total) > 0)
@@ -187,7 +182,7 @@ export function buildNormalizedProjectList(
           invoiceDate: task.transaction_date || undefined,
           invoiceNumber: task.invoice_number || undefined,
           source: 'income' as const,
-          status: task.ready_for_collection ? 'invoiced' as const : 'pending' as const,
+          ...incomeReceivableState(task.status, task.invoice_number ?? undefined, task.linked_task_id ?? undefined, task.ready_for_collection),
           updatedAt: updatedAt(task.updated_at, project.updated_at),
         })),
     ];
@@ -195,6 +190,7 @@ export function buildNormalizedProjectList(
       id: project.id,
       name: project.name,
       archivedAt: project.archived_at ?? undefined,
+      plannedCloseDate: cleanPlannedCloseDate(project.planned_close_date),
       clientId: project.client_id,
       clientName: projectListClientName(project),
       updated_at: project.updated_at,
@@ -202,8 +198,7 @@ export function buildNormalizedProjectList(
       outstandingAmount: outstandingPayable,
       outstandingReceivable: outstandingIncome + outstandingBatches,
       outstandingPayable,
-      workCommandItems: project.archived_at ? [] : sortWorkCommandItems(workItems).slice(0, 20),
-      receivableItems: sortReceivables(receivableItems).slice(0, 20),
+      ...summarizeCommandItems(workItems, receivableItems, day),
     };
   });
 }

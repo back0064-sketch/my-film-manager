@@ -1,4 +1,5 @@
 import { ModuleConfig, ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch, Task } from '@/types/project';
+import { cleanPlannedCloseDate } from '@/lib/projects/work-command';
 
 export const DEFAULT_MODULE_CONFIGS: ModuleConfig[] = [
   { moduleId: 'Scripting', customStatuses: ['💡 構想中', '✍️ 撰寫中', '✅ 已定稿'] },
@@ -201,11 +202,17 @@ export function cleanProjectData(raw: unknown, fallbackId: string): ProjectData 
   const settlementBatches = Array.isArray(source.settlementBatches)
     ? source.settlementBatches.flatMap((item) => { const batch = cleanSettlementBatch(item); return batch ? [batch] : []; })
     : [];
+  const waitingIds = new Set(Array.isArray(source.waitingForClientTaskIds) ? source.waitingForClientTaskIds : []);
+  const waitingForClientTaskIds = consolidatedTasks
+    .filter((task) => task.moduleId !== 'Finance' && waitingIds.has(task.id))
+    .map((task) => task.id);
 
   return {
     id: fallbackId || (typeof source.id === 'string' ? source.id : ''),
     name: name ?? '未命名影視專案',
     ...(typeof source.archivedAt === 'string' && Number.isFinite(Date.parse(source.archivedAt)) ? { archivedAt: source.archivedAt } : {}),
+    plannedCloseDate: cleanPlannedCloseDate(source.plannedCloseDate),
+    waitingForClientTaskIds: waitingForClientTaskIds.length ? waitingForClientTaskIds : undefined,
     syncVersion: typeof source.syncVersion === 'string' ? source.syncVersion : undefined,
     projectType,
     isFlatRate: source.isFlatRate === true || source.projectType === 'shortVideoEditing',

@@ -8,6 +8,8 @@ export const MODULES = [
 export const WORKSPACE_MODULES = [MODULES[0], MODULES[3]] as const;
 
 export type ModuleId = (typeof MODULES)[number]['id'];
+export type ProjectDestination = { moduleId: ModuleId; taskId?: string };
+export type OpenProject = (id: string, destination?: ProjectDestination) => void;
 
 export const PROJECT_TYPES = [
   { id: 'general', name: '一般製片', description: '使用標準製片流程' },
@@ -97,6 +99,7 @@ export interface WorkCommandItem {
   status: string;
   moduleId: ModuleId;
   dueDate?: string;
+  waitingForClient?: boolean;
   updatedAt: string;
 }
 
@@ -116,7 +119,15 @@ export interface ReceivableItem {
   month?: string;
   source: ReceivableSource;
   status: ReceivableStatus;
+  /** Linked production income can still be awaiting delivery. */
+  awaitingDelivery?: boolean;
   updatedAt: string;
+}
+
+export interface WorkCommandCounts {
+  day: string;
+  tasks: Record<WorkCommandUrgency | 'all' | 'waiting', number>;
+  receivables: Record<'all' | 'pending' | 'invoiced' | 'overdue' | 'dueSoon', number>;
 }
 
 export interface MonthlySettlement {
@@ -134,6 +145,8 @@ export interface ProjectData {
   id: string;
   name: string;
   archivedAt?: string;
+  plannedCloseDate?: string;
+  waitingForClientTaskIds?: string[];
   /** Cloud row version used for optimistic concurrency control. */
   syncVersion?: string;
   projectType: ProjectType;
@@ -154,6 +167,7 @@ export interface ProjectListItem {
   id: string;
   name: string;
   archivedAt?: string;
+  plannedCloseDate?: string;
   clientId: string | null;
   clientName: string | null;
   updated_at: string;
@@ -164,6 +178,7 @@ export interface ProjectListItem {
   /** Small, non-editable summaries used by the cross-project command centre. */
   workCommandItems?: WorkCommandItem[];
   receivableItems?: ReceivableItem[];
+  commandCounts?: WorkCommandCounts;
 }
 
 export interface Client {

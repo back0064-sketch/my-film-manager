@@ -57,6 +57,11 @@ async function mockApi(page: Page) {
       }
       if (url.pathname === `/api/projects/${fixtureProjectId}` && method === 'PUT') {
         const body = input instanceof Request ? await input.clone().json() : JSON.parse(String(init?.body ?? '{}'));
+        Object.assign(projectFixture, body);
+        Object.assign(projectList[0], { plannedCloseDate: body.plannedCloseDate });
+        for (const task of projectList[0].workCommandItems) {
+          Object.assign(task, { waitingForClient: body.waitingForClientTaskIds?.includes(task.taskId) });
+        }
         return json({ ...body, syncVersion: version });
       }
       return originalFetch(input, init);
@@ -122,6 +127,31 @@ test('每日工作指揮台會優先顯示逾期工作與追款', async ({ page 
   await expect(command.getByText('INV-09')).toBeVisible();
   await command.getByRole('button', { name: /已逾期 修改影片/ }).click();
   await expect(page.getByRole('heading', { name: '專案摘要' })).toBeVisible();
+});
+
+test('設定等回覆與結案日後，大廳可篩選並直接開啟工作或追款', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+  const work = page.getByRole('region', { name: '今日工作清單' });
+  const chase = page.getByRole('region', { name: '跨專案追款' });
+  await work.getByRole('button', { name: /已逾期 修改影片/ }).click();
+  const details = page.getByRole('complementary').filter({ hasText: '任務詳情' });
+  const waiting = details.getByRole('checkbox', { name: '等客戶回覆' });
+  await expect(waiting).toBeVisible();
+  await waiting.check();
+  await details.getByRole('button', { name: '關閉任務詳情' }).click();
+  await page.getByLabel('預計結案日').fill('2026-11-23');
+  await page.getByRole('button', { name: /返回大廳/ }).click();
+
+  await work.getByRole('button', { name: '等客戶回覆 1' }).click();
+  await expect(work.getByRole('button', { name: /修改影片/ })).toBeVisible();
+  await work.getByRole('button', { name: '即將結案 1' }).click();
+  await expect(work.getByRole('button', { name: /手機測試專案.*11\/23/ })).toBeVisible();
+  await chase.getByRole('button', { name: '待請款 0', exact: true }).click();
+  await expect(chase.getByText('這個篩選目前沒有款項。')).toBeVisible();
+  await chase.getByRole('button', { name: '已請款待收 1' }).click();
+  await chase.getByRole('button', { name: /INV-09/ }).click();
+  await expect(page.getByRole('heading', { name: /財務帳目/ })).toBeVisible();
 });
 
 test('歸檔移出進行中，保留搜尋與追款，也可恢復', async ({ page }) => {

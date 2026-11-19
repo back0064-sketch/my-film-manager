@@ -6,7 +6,7 @@ import { ProjectConflictError, PublicApiError } from '@/lib/middlewares/api-hand
 import { projectFinancialSummary } from '@/lib/projects/project-summary';
 import { preservesIssuedSettlements } from '@/lib/projects/settlement-logic';
 import { buildNormalizedProjectList, projectListClientName, projectsNeedingSource, type ProjectListMetadataRow } from '@/lib/projects/normalized-summary';
-import { buildReceivableItems, buildWorkCommandItems } from '@/lib/projects/work-command';
+import { buildProjectCommandSummary, taipeiToday } from '@/lib/projects/work-command';
 import * as repository from '@/lib/repositories/project-repository';
 import { Client, FilmProjectRow, ProjectData, ProjectListItem } from '@/types/project';
 
@@ -52,20 +52,21 @@ function clientInput(payload: unknown) {
 
 export async function listProjects(): Promise<ProjectListItem[]> {
   const user = await requireUser();
+  const day = taipeiToday();
   const metadataResult = await repository.findProjectListMetadata(user.id);
-  if (metadataResult.error || metadataResult.count !== metadataResult.data.length) return listProjectsFromSource(user.id);
+  if (metadataResult.error || metadataResult.count !== metadataResult.data.length) return listProjectsFromSource(user.id, day);
   if (!metadataResult.data.length) return [];
 
   const { tasks, batches } = await repository.findNormalizedProjectSummary(user.id);
   // PostgREST can return a successful, capped result; partial summaries misstate balances.
-  if (tasks.error || batches.error || tasks.count !== tasks.data.length || batches.count !== batches.data.length) return listProjectsFromSource(user.id);
+  if (tasks.error || batches.error || tasks.count !== tasks.data.length || batches.count !== batches.data.length) return listProjectsFromSource(user.id, day);
 
   const stale = new Set(projectsNeedingSource(metadataResult.data, tasks.data, batches.data));
-  const fresh = buildNormalizedProjectList(metadataResult.data.filter((project) => !stale.has(project.id)), tasks.data, batches.data);
+  const fresh = buildNormalizedProjectList(metadataResult.data.filter((project) => !stale.has(project.id)), tasks.data, batches.data, day);
   if (!stale.size) return fresh;
-  if (stale.size === metadataResult.data.length || stale.size > 50) return listProjectsFromSource(user.id);
+  if (stale.size === metadataResult.data.length || stale.size > 50) return listProjectsFromSource(user.id, day);
 
-  const updated = await listProjectsFromSource(user.id, [...stale]);
+  const updated = await listProjectsFromSource(user.id, day, [...stale]);
   return sortProjectList([...fresh, ...updated]);
 }
 
@@ -73,7 +74,7 @@ function sortProjectList(projects: ProjectListItem[]) {
   return projects.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
 }
 
-async function listProjectsFromSource(ownerId: string, projectIds?: string[]) {
+async function listProjectsFromSource(ownerId: string, day: string, projectIds?: string[]) {
   const { data, error } = await repository.findAllProjects(ownerId, projectIds);
   if (error) throw error;
   return sortProjectList(data.map((row: FilmProjectRow & ProjectListMetadataRow) => {
@@ -85,6 +86,7 @@ async function listProjectsFromSource(ownerId: string, projectIds?: string[]) {
       id,
       name,
       archivedAt: project?.archivedAt,
+      plannedCloseDate: project?.plannedCloseDate,
       clientId: client_id,
       clientName,
       updated_at,
@@ -92,8 +94,7 @@ async function listProjectsFromSource(ownerId: string, projectIds?: string[]) {
       outstandingAmount: outstandingPayable,
       outstandingReceivable,
       outstandingPayable,
-      workCommandItems: project ? buildWorkCommandItems(project).map((item) => ({ ...item, clientName })) : [],
-      receivableItems: project ? buildReceivableItems(project).map((item) => ({ ...item, clientName })) : [],
+      ...(project ? buildProjectCommandSummary(project, clientName, day) : {}),
     };
   }));
 }

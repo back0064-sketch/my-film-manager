@@ -18,4 +18,18 @@ describe('正規化大廳摘要', () => {
     expect(project.workCommandItems?.[0].title).toBe('待剪輯');
     expect(project.receivableItems?.map((item) => item.amount)).toEqual([8000, 12000]);
   });
+
+  it('正規化摘要可標示等回覆和預計結案日，歸檔案保留待請款', () => {
+    const project = { ...metadata[0], waiting_task_ids: ['t1'], planned_close_date: '2026-09-24' };
+    const productionAndIncome = [...tasks, {
+      ...tasks[2], task_id: 'ready', invoice_number: null, status: '待請款', linked_task_id: 't1',
+    }];
+    const [active] = buildNormalizedProjectList([project], productionAndIncome, batches, '2026-09-18');
+    expect(active.plannedCloseDate).toBe('2026-09-24');
+    expect(active.workCommandItems?.[0]).toMatchObject({ taskId: 't1', waitingForClient: true });
+    expect(active.commandCounts?.tasks).toMatchObject({ today: 1, waiting: 1 });
+    const [archived] = buildNormalizedProjectList([{ ...project, archived_at: metadata[0].updated_at }], productionAndIncome, batches, '2026-09-18');
+    expect(archived.workCommandItems).toEqual([]);
+    expect(archived.commandCounts?.receivables).toMatchObject({ all: 3, invoiced: 2, pending: 1 });
+  });
 });

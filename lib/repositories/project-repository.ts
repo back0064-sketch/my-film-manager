@@ -26,7 +26,7 @@ export async function findProjectListMetadata(ownerId: string) {
   const database = await createServerSupabaseClient();
   return database
     .from('film_projects')
-    .select('id, name, client_id, updated_at, payload_version:project_data->>syncVersion, archived_at:project_data->>archivedAt, clients(name)', { count: 'exact' })
+    .select('id, name, client_id, updated_at, payload_version:project_data->>syncVersion, archived_at:project_data->>archivedAt, planned_close_date:project_data->>plannedCloseDate, waiting_task_ids:project_data->waitingForClientTaskIds, clients(name)', { count: 'exact' })
     .eq('owner_id', ownerId)
     .order('updated_at', { ascending: false }).returns<ProjectListMetadataRow[]>();
 }
@@ -36,7 +36,7 @@ export async function findNormalizedProjectSummary(ownerId: string) {
   const [tasks, batches] = await Promise.all([
     database
       .from('project_tasks')
-      .select('project_id, task_id, module_id, title, status, is_completed, due_date, transaction_type, amount, is_paid, ready_for_collection, invoice_number, transaction_date, updated_at:source_updated_at, unit_price, delivered_at, settlement_batch_id, archived_at, source_project_updated_at', { count: 'exact' })
+      .select('project_id, task_id, module_id, title, status, is_completed, due_date, transaction_type, amount, is_paid, ready_for_collection, invoice_number, linked_task_id, transaction_date, updated_at:source_updated_at, unit_price, delivered_at, settlement_batch_id, archived_at, source_project_updated_at', { count: 'exact' })
       .eq('owner_id', ownerId).returns<NormalizedTaskSummaryRow[]>(),
     database
       .from('project_settlement_batches')

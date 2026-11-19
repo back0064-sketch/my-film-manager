@@ -16,11 +16,15 @@ type Props = {
   deleteTask: (id: string) => void;
   addTask: (title: string, moduleId: 'Finance', status: string, type?: TransactionType, amount?: number, linkedIncomeAmount?: number) => void;
   onBackToTasks: () => void;
+  onBack: () => void;
+  saving: boolean;
+  syncFeedback: React.ReactNode;
+  conflictFeedback: React.ReactNode;
 };
 
 const money = (value: number) => `NT$ ${value.toLocaleString()}`;
 
-export function ProjectFinancePanel({ project, updateBudget, updateTask, updateSettlementBatch, deleteTask, addTask, onBackToTasks }: Props) {
+export function ProjectFinancePanel({ project, updateBudget, updateTask, updateSettlementBatch, deleteTask, addTask, onBackToTasks, onBack, saving, syncFeedback, conflictFeedback }: Props) {
   const [typeFilter, setTypeFilter] = useState<'all' | TransactionType>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'paid'>('all');
   const [monthFilter, setMonthFilter] = useState('');
@@ -66,7 +70,8 @@ export function ProjectFinancePanel({ project, updateBudget, updateTask, updateS
   };
 
   return <main className="finance-panel min-h-screen bg-slate-950 p-4 pb-24 text-slate-100 md:p-8 md:pb-8"><div className="mx-auto max-w-7xl">
-    <header className="mb-6 flex flex-wrap items-center gap-3 border-b border-slate-800 pb-6"><button onClick={onBackToTasks} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs">← 製作任務</button><div className="min-w-0 flex-1"><p className="truncate text-xs text-indigo-400">{project.name}</p><h1 className="text-2xl font-black">💰 財務帳目</h1></div><button onClick={exportCsv} className="rounded-lg border border-slate-700 px-3 py-2 text-xs">匯出 CSV</button></header>
+    <header className="mb-6 flex flex-wrap items-center gap-3 border-b border-slate-800 pb-6"><button onClick={onBackToTasks} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs">← 製作任務</button><button type="button" onClick={onBack} disabled={saving} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs disabled:opacity-50">← 返回大廳</button><div className="min-w-0 flex-1"><p className="truncate text-xs text-indigo-400">{project.name}</p><h1 className="text-2xl font-black">💰 財務帳目</h1>{syncFeedback}</div><button onClick={exportCsv} className="rounded-lg border border-slate-700 px-3 py-2 text-xs">匯出 CSV</button></header>
+    {conflictFeedback}
     <MonthlyFinanceReport tasks={transactions} />
     {project.settlementBatches.length > 0 && <section className="mt-6 rounded-2xl border border-amber-800/70 bg-slate-900/60 p-4 sm:p-5"><h2 className="font-bold">專案月結追款</h2><p className="mt-1 text-xs text-slate-400">每個月份獨立請款，不與同一客戶的其他專案合併。</p><div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
       <BudgetValue label="待請款" amount={settlementTotals.draft} />

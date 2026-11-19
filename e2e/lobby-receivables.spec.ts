@@ -22,8 +22,7 @@ test('大廳金額與追款一致，讀取失敗時標示暫存資料', async ({
   const finances = page.getByRole('region', { name: '財務隱私控制' });
   await page.goto('/');
   await expect(chase.getByText('逾期 1', { exact: true })).toBeVisible();
-  await expect(chase.getByRole('button')).toHaveCount(1);
-  await expect(chase.getByRole('button')).toContainText('TEST-02');
+  await expect(chase.getByRole('button', { name: /TEST-02/ })).toHaveCount(1);
   await finances.getByRole('button', { name: '顯示金額' }).click();
   await expect(chase.getByText('NT$ 2,400').first()).toBeVisible();
   await expect(finances.getByText(/2,400/)).toBeVisible();
@@ -31,5 +30,5 @@ test('大廳金額與追款一致，讀取失敗時標示暫存資料', async ({
   fail = true;
   await page.reload();
   await expect(page.getByRole('status').filter({ hasText: '大廳目前無法取得雲端資料' })).toBeVisible();
-  await expect(chase.getByRole('button')).toContainText('TEST-02');
+  await expect(chase.getByRole('button', { name: /TEST-02/ })).toBeVisible();
 });

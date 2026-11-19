@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createProjectData } from '@/lib/project-data';
+import { cleanProjectData, createProjectData } from '@/lib/project-data';
 import {
   buildReceivableItems,
+  buildProjectCommandSummary,
   buildWorkCommandItems,
   receivableUrgency,
+  isClosingSoon,
   sortWorkCommandItems,
   workCommandUrgency,
 } from '@/lib/projects/work-command';
@@ -28,8 +30,43 @@ describe('work command summaries', () => {
       { taskId: 'late', projectId: 'p', projectName: 'p', title: 'late', status: 'x', moduleId: 'Scripting' as const, dueDate: '2026-09-16', updatedAt: '2026-09-17T00:00:00.000Z' },
     ];
 
-    expect(sortWorkCommandItems(items, '2026-09-17').map((item) => item.taskId)).toEqual(['late', 'today', 'future', 'none']);
+    expect(sortWorkCommandItems(items).map((item) => item.taskId)).toEqual(['late', 'today', 'future', 'none']);
     expect(workCommandUrgency(items[0], '2026-09-17')).toBe('upcoming');
+  });
+
+  it('保留每種篩選的首批項目，總數以完整來源計算', () => {
+    const project = createProjectData('p', '專案');
+    const updatedAt = '2026-11-18T02:00:00Z';
+    const overdue = Array.from({ length: 31 }, (_, i) => ({
+      id: `past-${i}`, title: '早期待辦', status: '💡 構想中',
+      moduleId: 'Scripting' as const, dueDate: '2026-11-12', updatedAt, isPaid: false, amount: 0,
+    }));
+    const invoiced = Array.from({ length: 23 }, (_, i) => ({
+      id: `invoice-${i}`, title: '已請款', status: '已請款', moduleId: 'Finance' as const,
+      transactionType: 'income' as const, dueDate: '2026-11-12', updatedAt, isPaid: false, amount: 300,
+    }));
+    project.tasks = [
+      ...overdue, ...invoiced,
+      { ...overdue[0], id: 'today', dueDate: '2026-11-18' },
+      { ...overdue[0], id: 'wait', dueDate: undefined },
+      { ...invoiced[0], id: 'unbilled', status: '待請款', linkedTaskId: 'wait', readyForCollection: true, dueDate: undefined },
+      { ...invoiced[0], id: 'undelivered', status: '待請款', linkedTaskId: 'today', dueDate: undefined },
+    ];
+    project.waitingForClientTaskIds = ['wait', 'unknown', 'unbilled'];
+    project.plannedCloseDate = '2026-11-25';
+    const cleaned = cleanProjectData(project, 'p')!;
+    const summary = buildProjectCommandSummary(cleaned, null, '2026-11-18');
+    expect(cleaned.waitingForClientTaskIds).toEqual(['wait']);
+    expect(summary.commandCounts.tasks).toMatchObject({ all: 33, overdue: 31, today: 1, waiting: 1 });
+    expect(summary.workCommandItems).toHaveLength(14);
+    expect(summary.workCommandItems.find((task) => task.taskId === 'wait')?.waitingForClient).toBe(true);
+    expect(summary.commandCounts.receivables).toMatchObject({ all: 25, pending: 1, invoiced: 23 });
+    expect(summary.receivableItems).toHaveLength(9);
+    expect(summary.receivableItems.find((item) => item.id === 'income:unbilled')?.status).toBe('pending');
+    expect(isClosingSoon(cleaned.plannedCloseDate, '2026-11-18')).toBe(true);
+    expect(isClosingSoon(cleaned.plannedCloseDate, '2026-11-17')).toBe(false);
+    expect(isClosingSoon('2026-02-30', '2026-11-18')).toBe(false);
+    expect(isClosingSoon('2026-11-12', '2026-11-18')).toBe(true);
   });
 });
 

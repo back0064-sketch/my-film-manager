@@ -26,9 +26,14 @@ function fixture(id: string, name: string, amount: number): ProjectData {
   }] };
 }
 
-function mockPostgrest({ truncateBatches = false } = {}) {
+function mockPostgrest({ truncateBatches = false, withDailyPlan = false } = {}) {
   const first = fixture(firstId, '發票 A', 1500);
   const second = fixture(secondId, '發票 B', 2400);
+  if (withDailyPlan) {
+    first.plannedCloseDate = '2026-11-20';
+    first.waitingForClientTaskIds = ['clip'];
+    first.tasks = [{ id: 'clip', title: '待客戶確認短片', moduleId: 'Scripting', status: '待確認', amount: 0, isPaid: false, updatedAt: version }];
+  }
   const rows = [first, second].map((project) => ({ id: project.id, name: project.name, client_id: 'same-client', clients: { name: '同一客戶' }, updated_at: version, project_data: project }));
   // Existing projections stay on the old version when the write's RPC fails.
   const projection = rows.map((row) => ({ project_id: row.id, batch_id: 'same-batch-id', month: '2026-10', total: row.project_data.settlementBatches[0].total, status: 'invoiced', invoice_number: row.name, due_date: '2026-11-10', source_project_updated_at: version }));
@@ -39,7 +44,12 @@ function mockPostgrest({ truncateBatches = false } = {}) {
     const json = (items: unknown[], count = items.length) => Response.json(items, { headers: { 'Content-Range': `*/${count}` } });
     if (pathname.endsWith('/rpc/normalize_project_data')) return Response.json({ message: 'projection delayed', code: '42P01' }, { status: 404 });
     expect(searchParams.get('owner_id')).toBe('eq.owner');
-    if (pathname.endsWith('/project_tasks')) return json([]);
+    if (pathname.endsWith('/project_tasks')) {
+      return json(withDailyPlan ? [{
+        project_id: firstId, task_id: 'clip', title: '待客戶確認短片', module_id: 'Scripting', status: '待確認',
+        is_completed: false, updated_at: version, source_project_updated_at: version,
+      }] : []);
+    }
     if (pathname.endsWith('/project_settlement_batches')) return json(truncateBatches ? projection.slice(0, 1) : projection, projection.length);
     if (init?.method === 'PATCH') {
       const row = rows.find((item) => idFilter === `eq.${item.id}`)!;
@@ -48,7 +58,14 @@ function mockPostgrest({ truncateBatches = false } = {}) {
       return json([row]);
     }
     const select = searchParams.get('select') ?? '';
-    if (select.includes('payload_version:')) return json(rows.map(({ project_data, ...row }) => ({ ...row, payload_version: project_data.syncVersion, archived_at: project_data.archivedAt })));
+    if (select.includes('payload_version:')) {
+      expect(select).toContain('planned_close_date:project_data->>plannedCloseDate');
+      expect(select).toContain('waiting_task_ids:project_data->waitingForClientTaskIds');
+      return json(rows.map(({ project_data, ...row }) => ({
+        ...row, payload_version: project_data.syncVersion, archived_at: project_data.archivedAt,
+        planned_close_date: project_data.plannedCloseDate, waiting_task_ids: project_data.waitingForClientTaskIds,
+      })));
+    }
     sourceQueries.push(idFilter);
     const selected = idFilter ? rows.filter((row) => idFilter.includes(row.id)) : rows;
     return json(selected);
@@ -86,6 +103,26 @@ it('摘要被資料庫筆數上限截斷時，使用完整來源重算', async (
   const response = await getLobby();
   expect(await response.json()).toMatchObject([{ outstandingReceivable: 1500 }, { outstandingReceivable: 2400 }]);
   expect(sourceQueries).toEqual([null]);
+});
+
+it('等回覆與結案日同步後，即使摘要更新失敗也能從新版本讀回', async () => {
+  const { first, sourceQueries } = mockPostgrest({ withDailyPlan: true });
+  const readFirst = async () => {
+    const projects: ProjectListItem[] = await (await getLobby()).json();
+    return projects.find((project) => project.id === firstId);
+  };
+  expect(await readFirst()).toMatchObject({
+    plannedCloseDate: '2026-11-20', workCommandItems: [{ taskId: 'clip', waitingForClient: true }],
+  });
+  expect(sourceQueries).toEqual([]);
+
+  const changed = { ...first, plannedCloseDate: '2026-11-23', waitingForClientTaskIds: [] };
+  const saved = await saveProject(new Request(request(firstId), { method: 'PUT', body: JSON.stringify(changed) }), context(firstId));
+  expect(saved.ok).toBe(true);
+  const updated = await readFirst();
+  expect(updated?.plannedCloseDate).toBe('2026-11-23');
+  expect(updated?.workCommandItems?.[0].waitingForClient).toBeUndefined();
+  expect(sourceQueries).toEqual([`eq.${firstId}`, `in.(${firstId})`]);
 });
 
 it('直接存檔也無法覆寫已請款金額，撤回請款後才可更正', async () => {
