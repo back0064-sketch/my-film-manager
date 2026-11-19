@@ -266,9 +266,9 @@ test('大廳切換工作區，設定與新增表單按需顯示', async ({ page 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
-test('暖白測試版保有鍵盤焦點，減少動態時仍可操作', async ({ page }) => {
+test('暖白按鈕平時無框，以膠囊回應滑鼠和鍵盤', async ({ page }) => {
   await mockApi(page);
-  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'no-preference' });
   await page.goto('/');
 
   const heading = page.getByRole('heading', { name: '工作台', exact: true });
@@ -280,8 +280,22 @@ test('暖白測試版保有鍵盤焦點，減少動態時仍可操作', async ({
   expect(titleFontLoaded).toBe(true);
 
   const create = page.getByRole('button', { name: '新增專案', exact: true });
-  await expect(create).toHaveCSS('background-color', 'rgb(105, 78, 105)');
+  const showAmounts = page.getByRole('button', { name: '顯示金額', exact: true });
+  for (const button of [create, showAmounts]) {
+    await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+    await expect(button).toHaveCSS('border-top-left-radius', '999px');
+  }
+  if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) {
+    await showAmounts.hover();
+    await expect(showAmounts).toHaveCSS('border-top-color', 'rgb(105, 78, 105)');
+    await create.hover();
+    await expect(create).toHaveCSS('background-color', 'rgb(86, 60, 86)');
+    await expect(create.getByText('→')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 2, 0)');
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(create).toHaveCSS('transition-duration', '0s');
+  await expect(create.getByText('→')).toHaveCSS('transform', 'none');
   await page.getByRole('navigation', { name: '工作區導覽' }).getByRole('button', { name: '設定', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(create).toBeFocused();

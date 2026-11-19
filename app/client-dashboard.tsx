@@ -29,8 +29,8 @@ const dashboardHeadings: Record<DashboardSection, string> = {
 };
 
 const inputClass = 'w-full min-w-0 rounded-lg border border-work-control bg-work-input px-3 py-2.5 text-base text-work-ink placeholder:text-work-muted';
-const secondaryButton = 'workspace-button rounded-lg px-3 py-2.5 text-sm font-semibold';
-const primaryButton = 'workspace-button workspace-button--primary rounded-lg px-3 py-2.5 text-sm font-semibold disabled:opacity-50';
+const secondaryButton = 'workspace-button px-3 py-2.5 text-sm font-semibold';
+const primaryButton = 'workspace-button workspace-button--primary px-3 py-2.5 text-sm font-semibold disabled:opacity-50';
 
 const isProjectId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -301,7 +301,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
             {dashboardSections.map(({ id, label }) => (
               <button key={id} type="button" aria-current={section === id ? 'page' : undefined}
                 onClick={() => selectSection(id)}
-                className="workspace-nav flex min-h-11 items-center justify-center gap-2 rounded-lg border px-1 text-sm font-semibold lg:justify-start lg:px-3">
+                className="workspace-nav flex min-h-11 items-center justify-center gap-2 border px-1 text-sm font-semibold lg:justify-start lg:px-3">
                 {label}
               </button>
             ))}
@@ -386,9 +386,9 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
             )}
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              {!normalizedQuery && <div aria-label="專案列表篩選" role="group" className="flex gap-1 rounded-xl border border-work-line bg-work-surface p-1">
-                <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className="workspace-filter rounded-lg px-3 py-2 text-sm">進行中</button>
-                <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className="workspace-filter rounded-lg px-3 py-2 text-sm">已歸檔</button>
+              {!normalizedQuery && <div aria-label="專案列表篩選" role="group" className="flex gap-2">
+                <button type="button" aria-pressed={!showArchived} onClick={() => setShowArchived(false)} className="workspace-filter px-3 py-2 text-sm">進行中</button>
+                <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived(true)} className="workspace-filter px-3 py-2 text-sm">已歸檔</button>
               </div>}
               <p className="text-xs text-work-muted">{clients.length} 位客戶 · {projects.length} 個專案</p>
             </div>
@@ -406,10 +406,10 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs text-work-muted">{group.projects.length} 個專案</span>
                         {group.id !== 'unassigned' && <>
-                          <button type="button" onClick={() => void editClient(group.id)} className="workspace-button rounded-lg px-2.5 py-1.5 text-xs">編輯</button>
-                          <button type="button" onClick={() => void mergeClient(group.id)} className="workspace-button rounded-lg px-2.5 py-1.5 text-xs">合併</button>
+                          <button type="button" onClick={() => void editClient(group.id)} className="workspace-button px-2.5 py-1.5 text-xs">編輯</button>
+                          <button type="button" onClick={() => void mergeClient(group.id)} className="workspace-button px-2.5 py-1.5 text-xs">合併</button>
                           <button type="button" onClick={() => void deleteClient(group.id, group.name, projects.filter((project) => project.clientId === group.id).length)}
-                            aria-label={`刪除客戶 ${group.name}`} className="workspace-button workspace-button--quiet workspace-button--danger rounded-lg px-2.5 py-1.5 text-xs">
+                            aria-label={`刪除客戶 ${group.name}`} className="workspace-button workspace-button--quiet workspace-button--danger px-2.5 py-1.5 text-xs">
                             刪除
                           </button>
                         </>}
@@ -439,11 +439,11 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
                             </div>
                             <div className="flex shrink-0 flex-col items-end gap-1">
                               <button type="button" disabled={archivePending !== null} aria-label={`${project.archivedAt ? '恢復' : '歸檔'} ${project.name}`}
-                                onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="workspace-button rounded-lg px-2 py-1.5 text-xs disabled:opacity-50">
+                                onClick={(event) => { event.stopPropagation(); void changeArchive(project); }} className="workspace-button px-2 py-1.5 text-xs disabled:opacity-50">
                                 {project.archivedAt ? '恢復' : '歸檔'}
                               </button>
                               <button type="button" onClick={(event) => { event.stopPropagation(); deleteProject(project); }}
-                                aria-label={`刪除 ${project.name}`} className="workspace-button workspace-button--quiet workspace-button--danger rounded-lg px-2 py-1.5 text-xs">
+                                aria-label={`刪除 ${project.name}`} className="workspace-button workspace-button--quiet workspace-button--danger px-2 py-1.5 text-xs">
                                 刪除
                               </button>
                             </div>

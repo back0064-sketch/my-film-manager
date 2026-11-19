@@ -114,6 +114,12 @@
     transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
   }
 
+  .workspace-button,
+  .workspace-filter,
+  .workspace-nav {
+    border-radius: 0.5rem;
+  }
+
   .workspace-button {
     border: 1px solid var(--work-control);
     color: var(--work-ink);
@@ -145,6 +151,25 @@
 
   .workspace-button--primary:active:not(:disabled) {
     background: var(--work-primary-pressed);
+  }
+
+  [data-theme="editorial"] :is(.workspace-button, .workspace-filter, .workspace-nav) {
+    border-color: transparent;
+    border-radius: 999px;
+  }
+
+  [data-theme="editorial"] .workspace-button--primary {
+    background: transparent;
+    color: var(--work-link);
+  }
+
+  [data-theme="editorial"] :is(.workspace-button, .workspace-filter, .workspace-nav):active:not(:disabled) {
+    background: var(--work-selected);
+  }
+
+  [data-theme="editorial"] .workspace-button--primary:is(:active, :focus-visible):not(:disabled) {
+    background: var(--work-primary-pressed);
+    color: white;
   }
 
   .client-dashboard :where(button, a, input, select):focus-visible {
@@ -218,6 +243,19 @@
 
     .workspace-button--primary:hover:not(:disabled) .workspace-arrow {
       transform: translateX(2px);
+    }
+
+    [data-theme="editorial"] :is(.workspace-button, .workspace-filter, .workspace-nav):hover:not(:disabled) {
+      border-color: var(--work-link);
+    }
+
+    [data-theme="editorial"] .workspace-button--danger:hover:not(:disabled) {
+      border-color: var(--work-danger-ink);
+    }
+
+    [data-theme="editorial"] .workspace-button--primary:hover:not(:disabled, :active) {
+      background: var(--work-primary-hover);
+      color: white;
     }
   }
 

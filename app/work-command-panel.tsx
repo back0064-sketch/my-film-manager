@@ -166,7 +166,7 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
                 </div>
               ) : <p className="mt-1 text-xs text-work-muted">財務金額已隱藏</p>}
             </div>
-            <button type="button" aria-pressed={showAmounts} onClick={onToggleAmounts} className="workspace-button rounded-lg px-3 py-2 text-xs font-semibold">
+            <button type="button" aria-pressed={showAmounts} onClick={onToggleAmounts} className="workspace-button px-3 py-2 text-xs font-semibold">
               {showAmounts ? '隱藏金額' : '顯示金額'}
             </button>
           </div>
@@ -199,7 +199,7 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
 
 function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" aria-pressed={active} onClick={onClick} className="workspace-filter min-h-9 rounded-md px-2 py-1.5 text-xs font-semibold sm:min-h-8">
+    <button type="button" aria-pressed={active} onClick={onClick} className="workspace-filter min-h-9 px-2 py-1.5 text-xs font-semibold sm:min-h-8">
       {children}
     </button>
   );
