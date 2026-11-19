@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiClientError, projectApi } from '@/lib/client/project-api';
 import { projectCacheKey } from '@/lib/client/project-cache';
 import { cleanProjectData, createProjectData, switchProjectTemplate } from '@/lib/project-data';
-import { closeSettlementMonth, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject } from '@/lib/projects/settlement-logic';
+import { closeSettlementMonth, correctUnsettledDeliveryDate, recordDeliveryCoveredByPayment, reopenSettlementBatch as reopenSettlementBatchInProject, updateSettlementBatch as updateSettlementBatchInProject } from '@/lib/projects/settlement-logic';
 import { addTaskToProject, deleteTaskFromProject, updateTaskInProject } from '@/lib/projects/task-logic';
 import { ModuleId, MonthlySettlement, ProjectData, ProjectType, SettlementBatch, Task, TransactionType } from '@/types/project';
 
@@ -185,6 +185,24 @@ export function useProjectData(projectId: string, userId: string) {
     updateProject((current) => closeSettlementMonth(current, month));
   };
 
+  const setDeliveryDate = (taskId: string, date: string) => {
+    const current = projectRef.current;
+    if (!current) return false;
+    const next = correctUnsettledDeliveryDate(current, taskId, date);
+    if (next === current) return false;
+    updateProject((latest) => latest === current ? next : correctUnsettledDeliveryDate(latest, taskId, date));
+    return true;
+  };
+
+  const recordCoveredDelivery = (batchId: string, taskId: string) => {
+    const current = projectRef.current;
+    if (!current) return false;
+    const next = recordDeliveryCoveredByPayment(current, batchId, taskId);
+    if (next === current) return false;
+    updateProject((latest) => latest === current ? next : recordDeliveryCoveredByPayment(latest, batchId, taskId));
+    return true;
+  };
+
   const updateSettlementBatch = (id: string, updates: Partial<Pick<SettlementBatch, 'adjustment' | 'invoiceDate' | 'invoiceNumber' | 'dueDate' | 'notes' | 'status'>>) => {
     updateProject((current) => updateSettlementBatchInProject(current, id, updates));
   };
@@ -221,5 +239,5 @@ export function useProjectData(projectId: string, userId: string) {
     updateProject((current) => updateTaskInProject(current, taskId, updates));
   };
 
-  return { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
+  return { project, loading, syncStatus, syncError, syncConflict, lastSyncedAt, retrySync, resolveConflict, renameProject, updateBudget, updateDefaultUnitPrice, closeMonth, setDeliveryDate, recordCoveredDelivery, updateSettlementBatch, reopenSettlementBatch, addMonthlySettlement, updateMonthlySettlement, deleteMonthlySettlement, updateProjectTemplate, addTask, deleteTask, updateTask };
 }

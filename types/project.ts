@@ -70,6 +70,8 @@ export interface SettlementBatch {
   id: string;
   month: string;
   items: SettlementBatchItem[];
+  /** Delivery records covered by the original payment, outside the billed line items. */
+  includedDeliveries?: Pick<SettlementBatchItem, 'taskId' | 'title' | 'deliveredAt'>[];
   subtotal: number;
   adjustment: number;
   total: number;

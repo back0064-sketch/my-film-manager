@@ -71,11 +71,16 @@ function cleanSettlementBatch(value: unknown): SettlementBatch | null {
     }];
   });
   const subtotal = items.reduce((sum, item) => sum + item.unitPrice, 0);
+  const includedDeliveries = Array.isArray(value.includedDeliveries) ? value.includedDeliveries.flatMap((item: unknown) => {
+    if (!isRecord(item) || typeof item.taskId !== 'string' || typeof item.title !== 'string' || typeof item.deliveredAt !== 'string') return [];
+    return [{ taskId: item.taskId, title: item.title, deliveredAt: item.deliveredAt }];
+  }) : [];
   const adjustment = typeof value.adjustment === 'number' && Number.isFinite(value.adjustment) ? value.adjustment : 0;
   return {
     id: value.id,
     month: value.month,
     items,
+    ...(includedDeliveries.length > 0 ? { includedDeliveries } : {}),
     subtotal,
     adjustment,
     total: Math.max(0, subtotal + adjustment),

@@ -5,6 +5,7 @@ import {
   Task,
 } from "@/types/project";
 import { taipeiToday } from "@/lib/projects/work-command";
+import { updateTaskInProject } from "@/lib/projects/task-logic";
 
 function finalStatus(project: ProjectData, task: Task) {
   return project.moduleConfigs
@@ -51,6 +52,42 @@ export function settlementCandidates(project: ProjectData, month: string) {
 
 export function deliveriesMissingDate(project: ProjectData) {
   return unsettledDeliveries(project).filter((task) => !taipeiDeliveryDate(task.deliveredAt));
+}
+
+export function correctUnsettledDeliveryDate(project: ProjectData, taskId: string, date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || taipeiDeliveryDate(date) !== date) return project;
+  const task = unsettledDeliveries(project).find((item) => item.id === taskId);
+  if (!task || taipeiDeliveryDate(task.deliveredAt) === date) return project;
+  return updateTaskInProject(project, taskId, { deliveredAt: date });
+}
+
+export function recordDeliveryCoveredByPayment(project: ProjectData, batchId: string, taskId: string, now = new Date().toISOString()): ProjectData {
+  const batch = project.settlementBatches.find((item) => item.id === batchId);
+  if (!batch || batch.status !== 'paid') return project;
+  const task = settlementCandidates(project, batch.month).find((item) => item.id === taskId);
+  if (!task) return project;
+  const alreadyRecorded = project.settlementBatches.some((item) => item.items.some((entry) => entry.taskId === taskId)
+    || item.includedDeliveries?.some((entry) => entry.taskId === taskId));
+  const income = linkedIncome(project, task);
+  if (alreadyRecorded || income?.settlementBatchId) return project;
+
+  const delivery = { taskId: task.id, title: task.title, deliveredAt: task.deliveredAt };
+  return {
+    ...project,
+    settlementBatches: project.settlementBatches.map((item) => item.id === batchId
+      ? { ...item, includedDeliveries: [...(item.includedDeliveries ?? []), delivery] }
+      : item),
+    tasks: project.tasks.map((item) => {
+      if (item.id === taskId) return { ...item, settlementBatchId: batchId, archivedAt: now, updatedAt: now };
+      if (item.id !== income?.id) return item;
+      const previousPaidDate = taipeiDeliveryDate(item.paidAt);
+      const previousEntry = `原列金額 ${item.amount} 元${previousPaidDate ? `，原登記入帳日 ${previousPaidDate}` : ''}`;
+      return { ...item, settlementBatchId: batchId, amount: 0, isPaid: true, paidAt: item.paidAt ?? batch.paidAt, updatedAt: now,
+        status: finalStatus(project, item) ?? item.status,
+        description: [item.description, `已包含於 ${batch.month} 原批收款，${previousEntry}，另計金額 0 元。`].filter(Boolean).join('\n'),
+      };
+    }),
+  };
 }
 
 export function taskSettlementPrice(project: ProjectData, task: Task) {
@@ -146,6 +183,7 @@ export function updateSettlementBatch(
 ): ProjectData {
   const current = project.settlementBatches.find((batch) => batch.id === id);
   if (!current) return project;
+  if (current.includedDeliveries?.length && updates.status && updates.status !== 'paid') return project;
   const status: SettlementBatchStatus = updates.status ?? current.status;
   const adjustment =
     updates.adjustment === undefined ? current.adjustment : updates.adjustment;
