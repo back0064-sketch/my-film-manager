@@ -34,6 +34,7 @@ function DeliveryDateForm({ title, date, onSave }: { title: string; date?: strin
 export function ProjectSettlementPanel({ project, updateDefaultUnitPrice, closeMonth, updateSettlementBatch, reopenSettlementBatch, setDeliveryDate, recordCoveredDelivery }: Props) {
   const [month, setMonth] = useState(taipeiMonth);
   const [message, setMessage] = useState('');
+  const [confirmTaskId, setConfirmTaskId] = useState<string | null>(null);
   const candidates = settlementCandidates(project, month);
   const pendingDates = deliveriesMissingDate(project);
   const candidateTotal = candidates.reduce((sum, task) => sum + taskSettlementPrice(project, task), 0);
@@ -44,13 +45,14 @@ export function ProjectSettlementPanel({ project, updateDefaultUnitPrice, closeM
   const saveDeliveryDate = (taskId: string, date: string) => {
     if (setDeliveryDate(taskId, date)) {
       setMonth(date.slice(0, 7));
+      setConfirmTaskId(null);
       setMessage('已修正交付日期。');
     }
   };
 
-  const recordIncluded = (taskId: string, title: string) => {
+  const recordIncluded = (taskId: string) => {
     if (currentBatch?.status !== 'paid') return;
-    if (!window.confirm(`確定「${title}」已包含於 ${month} 原批收款？確認後會補登交付紀錄，另計金額為 0 元。`)) return;
+    setConfirmTaskId(null);
     setMessage(recordCoveredDelivery(currentBatch.id, taskId)
       ? '已補登至原批並封存影片。'
       : '無法補登。請確認這支影片是否已經綁定其他月結。');
@@ -73,9 +75,15 @@ export function ProjectSettlementPanel({ project, updateDefaultUnitPrice, closeM
           <summary className="cursor-pointer text-indigo-300">修正交付日期</summary>
           <div className="mt-2"><DeliveryDateForm title={task.title} date={taipeiDeliveryDate(task.deliveredAt)} onSave={(date) => saveDeliveryDate(task.id, date)} /></div>
         </details>
-        {currentBatch?.status === 'paid' && <button type="button" className="mt-3 rounded-lg border border-emerald-800 px-3 py-2 text-emerald-300 hover:bg-emerald-950" onClick={() => recordIncluded(task.id, task.title)}>
-          補登至已收款月結
-        </button>}
+        {currentBatch?.status === 'paid' && (confirmTaskId === task.id
+          ? <div className="mt-3 rounded-lg border border-emerald-900 p-2">
+            <p className="text-emerald-300">確認這支影片已含在 {month} 原批收款。補登後另計金額為 0 元。</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" className="rounded bg-emerald-800 px-3 py-2 text-white" onClick={() => recordIncluded(task.id)}>確認補登</button>
+              <button type="button" className="rounded px-3 py-2 text-slate-300" onClick={() => setConfirmTaskId(null)}>取消補登</button>
+            </div>
+          </div>
+          : <button type="button" className="mt-3 rounded-lg border border-emerald-800 px-3 py-2 text-emerald-300 hover:bg-emerald-950" onClick={() => setConfirmTaskId(task.id)}>補登至已收款月結</button>)}
       </div>)}</div>}
     </div>
 

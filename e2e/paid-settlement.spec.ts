@@ -15,7 +15,6 @@ test('修正交付日期並補登已收款影片，保留原月結金額', async
   await page.route('**/api/clients', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/projects', (route) => route.fulfill({ json: [{ id: projectId, name: project.name, clientId: null, updated_at: now, taskCount: 1, outstandingAmount: 0, outstandingPayable: 0, outstandingReceivable: 0 }] }));
   await page.route(`**/api/projects/${projectId}`, (route) => route.fulfill({ json: route.request().method() === 'PUT' ? route.request().postDataJSON() : project }));
-  page.on('dialog', (dialog) => dialog.accept());
 
   await page.goto('/');
   await page.getByRole('heading', { name: project.name }).click();
@@ -26,6 +25,7 @@ test('修正交付日期並補登已收款影片，保留原月結金額', async
   await expect(settlement.getByLabel('結算月份')).toHaveValue('2026-08');
   const saving = page.waitForRequest((request) => request.method() === 'PUT' && request.postDataJSON().settlementBatches[0].includedDeliveries?.length === 1);
   await settlement.getByRole('button', { name: '補登至已收款月結' }).click();
+  await settlement.getByRole('button', { name: '確認補登', exact: true }).click();
   await expect(settlement.getByText('漏登影片 · 2026-08-19')).toBeVisible();
   await expect(settlement.getByRole('paragraph').filter({ hasText: /^NT\$ 5,000$/ })).toBeVisible();
   await expect(settlement.getByRole('button', { name: '補登至已收款月結' })).toHaveCount(0);
