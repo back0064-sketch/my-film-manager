@@ -2,7 +2,7 @@
 @import "./workspace-theme.css";
 
 body {
-  background: var(--work-paper);
+  background: var(--work-canvas);
   color: var(--work-ink);
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, Helvetica, sans-serif;
 }
@@ -42,7 +42,7 @@ body {
 
   .project-board__header h1 {
     overflow-wrap: anywhere;
-    font-size: 1.25rem;
+    font-size: 1.75rem;
   }
 
   .project-workspace-nav {

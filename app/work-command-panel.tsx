@@ -120,8 +120,8 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
       <div className={financeOnly ? '' : 'grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'}>
         {!financeOnly && <section className="workspace-panel min-w-0 px-3 py-4 sm:p-6" aria-label="今日工作清單">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">工作清單</h2>
-            <time dateTime={today} className="text-sm text-work-muted">{formatDate(today)}</time>
+            <h2 className="text-lg font-semibold sm:text-xl">工作清單</h2>
+            <time dateTime={today} className="text-sm font-semibold text-work-clay tabular-nums">{formatDate(today)}</time>
           </div>
           <div className="flex flex-wrap gap-1" role="group" aria-label="工作篩選">
               {taskFilters.map(([value, label]) => (
@@ -158,10 +158,10 @@ export function WorkCommandPanel({ projects, totalReceivable, totalPayable, show
         <section className="workspace-panel min-w-0 px-3 py-4 sm:p-6" aria-label="跨專案追款">
           <div className="flex flex-wrap items-start justify-between gap-3" role="region" aria-label="財務隱私控制">
             <div>
-              <h2 className="text-lg font-semibold">跨專案追款</h2>
+              <h2 className="text-lg font-semibold sm:text-xl">跨專案追款</h2>
               {showAmounts ? (
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-                  <span className="workspace-positive tabular-nums">待收 {money(totalReceivable)}</span>
+                  <span className="workspace-positive font-semibold tabular-nums">待收 {money(totalReceivable)}</span>
                   <span className="text-work-muted">待付 {money(totalPayable)}</span>
                 </div>
               ) : <p className="mt-1 text-xs text-work-muted">財務金額已隱藏</p>}

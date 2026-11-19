@@ -24,7 +24,7 @@ export function MonthlyFinanceReport({ tasks }: { tasks: Task[] }) {
     <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
       <ReportValue label="本月已收" amount={report.received} color="text-work-positive" />
       <ReportValue label="本月已付" amount={report.paid} color="text-work-danger" />
-      <ReportValue label="本月淨現金流" amount={report.netCashFlow} color={report.netCashFlow >= 0 ? 'text-work-link' : 'text-work-danger'} signed />
+      <ReportValue label="本月淨現金流" amount={report.netCashFlow} color={report.netCashFlow >= 0 ? 'text-work-clay' : 'text-work-danger'} signed />
       <ReportValue label="月底未結清" amount={report.outstandingReceivable + report.outstandingPayable} color="text-work-warning" />
     </div>
 
@@ -43,7 +43,7 @@ export function MonthlyFinanceReport({ tasks }: { tasks: Task[] }) {
 
 function ReportValue({ label, amount, color, signed = false }: { label: string; amount: number; color: string; signed?: boolean }) {
   const prefix = signed && amount > 0 ? '+' : '';
-  return <div className="rounded-xl border border-work-line bg-work-surface p-4"><p className="text-xs text-work-muted">{label}</p><p className={`mt-2 text-lg font-bold tabular-nums ${color}`}>{prefix}{money(amount)}</p></div>;
+  return <div className="rounded-xl border border-work-line bg-work-surface p-4"><p className="text-xs text-work-muted">{label}</p><p className={`workspace-metric mt-2 break-words ${color}`}>{prefix}{money(amount)}</p></div>;
 }
 
 function ReportList({ title, empty, tasks, dateField }: { title: string; empty: string; tasks: Task[]; dateField: 'paidAt' | 'dueDate' }) {

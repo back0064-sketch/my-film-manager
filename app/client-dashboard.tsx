@@ -290,7 +290,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
   };
 
   return (
-    <main className="client-dashboard min-h-screen bg-work-paper">
+    <main className="client-dashboard min-h-screen bg-work-canvas">
       <div className="mx-auto grid min-h-screen max-w-[112rem] grid-rows-[auto_1fr] lg:grid-rows-1 lg:grid-cols-[13rem_minmax(0,1fr)] 2xl:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="workspace-sidebar sticky top-0 z-10 self-start border-b px-4 pb-2 backdrop-blur lg:flex lg:min-h-screen lg:flex-col lg:border-r lg:border-b-0 lg:p-5">
           <div className="flex min-h-12 items-center gap-2.5 py-2 lg:mb-8 lg:px-2">
@@ -309,8 +309,8 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
         </aside>
 
         <div className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
-          <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-work-line pb-4 sm:mb-6 lg:pb-5">
-            <h1 className="workspace-heading text-2xl font-semibold tracking-tight sm:text-3xl">{dashboardHeadings[section]}</h1>
+          <header className="workspace-header mb-6 flex flex-wrap items-center justify-between gap-3 sm:mb-8">
+            <h1 className="workspace-heading font-semibold">{dashboardHeadings[section]}</h1>
             {(section === 'work' || section === 'projects') && (
               <button type="button" onClick={startProject} className={primaryButton}
                 aria-expanded={section === 'projects' ? createForm === 'project' : undefined}>
@@ -397,7 +397,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
                 {normalizedQuery ? '找不到符合搜尋的客戶或專案。' : showArchived ? '目前沒有已歸檔的專案。' : '目前沒有進行中的專案。'}
               </p> : <div className="space-y-5">
                 {clientGroups.map((group) => (
-                  <section key={group.id} className="project-client-group py-4 sm:py-5">
+                  <section key={group.id} className="project-client-group px-3 py-4 sm:p-5">
                     <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-work-line pb-3">
                       <div className="min-w-0">
                         <h2 className="break-words font-semibold text-work-ink">{group.name}</h2>

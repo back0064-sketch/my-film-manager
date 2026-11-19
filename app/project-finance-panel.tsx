@@ -69,11 +69,11 @@ export function ProjectFinancePanel({ project, updateBudget, updateTask, updateS
     anchor.href = url; anchor.download = `${project.name}-財務.csv`; anchor.click(); URL.revokeObjectURL(url);
   };
 
-  return <main className="finance-panel min-h-screen bg-work-paper p-4 pb-24 text-work-ink tabular-nums md:p-8 md:pb-8"><div className="mx-auto max-w-[100rem]">
-    <header className="mb-6 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-work-line pb-6 md:flex">
+  return <main className="finance-panel min-h-screen bg-work-canvas p-4 pb-24 text-work-ink tabular-nums md:p-8 md:pb-8"><div className="mx-auto max-w-[100rem]">
+    <header className="workspace-header mb-6 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 md:flex">
       <div className="col-span-2 min-w-0 md:order-2 md:flex-1">
         <p className="truncate text-xs text-work-link">{project.name}</p>
-        <h1 className="workspace-heading text-2xl font-semibold">💰 財務帳目</h1>
+        <h1 className="workspace-heading font-semibold">💰 財務帳目</h1>
         {syncFeedback}
       </div>
       <nav aria-label="財務頁導覽" className="flex min-w-0 flex-wrap gap-1 md:order-1">

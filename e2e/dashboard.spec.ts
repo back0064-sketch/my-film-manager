@@ -272,12 +272,17 @@ test('暖白按鈕平時無框，以膠囊回應滑鼠和鍵盤', async ({ page 
   await page.goto('/');
 
   const heading = page.getByRole('heading', { name: '工作台', exact: true });
-  await expect(heading).toHaveCSS('color', 'rgb(36, 35, 33)');
+  await expect(heading).toHaveCSS('color', 'rgb(44, 48, 40)');
   await expect(heading).toHaveCSS('font-family', /Workspace Noto Serif TC/);
   const titleFontLoaded = await page.evaluate(async () => {
     return (await document.fonts.load('600 32px "Workspace Noto Serif TC"', '工作台')).length > 0;
   });
   expect(titleFontLoaded).toBe(true);
+
+  const header = page.locator('header.workspace-header');
+  await expect(header).toHaveCSS('background-image', /linear-gradient\([^)]*rgb\(233, 238, 227\).*rgb\(250, 248, 243\)/);
+  expect(await header.evaluate((el) => getComputedStyle(el, '::before').backgroundColor)).toBe('rgb(193, 105, 60)');
+  await expect(page.getByRole('region', { name: '今日工作清單' })).toHaveCSS('background-image', 'none');
 
   const create = page.getByRole('button', { name: '新增專案', exact: true });
   const showAmounts = page.getByRole('button', { name: '顯示金額', exact: true });
@@ -288,9 +293,9 @@ test('暖白按鈕平時無框，以膠囊回應滑鼠和鍵盤', async ({ page 
   }
   if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) {
     await showAmounts.hover();
-    await expect(showAmounts).toHaveCSS('border-top-color', 'rgb(105, 78, 105)');
+    await expect(showAmounts).toHaveCSS('border-top-color', 'rgb(81, 110, 65)');
     await create.hover();
-    await expect(create).toHaveCSS('background-color', 'rgb(86, 60, 86)');
+    await expect(create).toHaveCSS('background-color', 'rgb(67, 90, 54)');
     await expect(create.getByText('→')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 2, 0)');
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -310,29 +315,30 @@ test('深色系統設定下，大廳、看板、月結、財務和設定仍採�
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   const paper = 'rgb(255, 255, 255)';
+  const canvas = 'rgb(250, 248, 243)';
   const nav = page.getByRole('navigation', { name: '工作區導覽' });
   const main = page.getByRole('main');
-  await expect(page.locator('body')).toHaveCSS('background-color', paper);
+  await expect(page.locator('body')).toHaveCSS('background-color', canvas);
   await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
 
   await nav.getByRole('button', { name: '設定', exact: true }).click();
-  await expect(main).toHaveCSS('background-color', paper);
+  await expect(main).toHaveCSS('background-color', canvas);
   await expect(page.getByRole('region', { name: '帳號安全與 MFA' })).toHaveCSS('background-color', paper);
   await expect(page.getByRole('link', { name: '下載營運備份' })).toHaveCSS('border-top-left-radius', '999px');
 
   await nav.getByRole('button', { name: '財務', exact: true }).click();
-  await expect(main).toHaveCSS('background-color', paper);
+  await expect(main).toHaveCSS('background-color', canvas);
   await expect(page.getByRole('region', { name: '跨專案追款' })).toHaveCSS('background-color', paper);
 
   await nav.getByRole('button', { name: '專案', exact: true }).click();
   await page.getByRole('button', { name: project.name, exact: true }).click();
   const settlement = page.getByRole('region', { name: '專案月結' });
   await expect(settlement).toHaveCSS('background-color', paper);
-  await expect(main).toHaveCSS('background-color', paper);
+  await expect(main).toHaveCSS('background-color', canvas);
   await expect(settlement.getByRole('button', { name: '完成本月結案' })).toHaveCSS('border-top-left-radius', '999px');
   await page.getByRole('button', { name: '💰 財務帳目', exact: true }).click();
   await expect(page.getByRole('region', { name: '月份財務報表' })).toHaveCSS('background-color', paper);
-  await expect(main).toHaveCSS('background-color', paper);
+  await expect(main).toHaveCSS('background-color', canvas);
   if ((page.viewportSize()?.width ?? 0) < 600) {
     const title = await page.getByRole('heading', { name: /財務帳目/ }).boundingBox();
     expect(title?.height).toBeLessThan(48);

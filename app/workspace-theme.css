@@ -9,6 +9,7 @@
 }
 
 @theme inline {
+  --color-work-canvas: var(--work-canvas);
   --color-work-surface: var(--work-surface);
   --color-work-paper: var(--work-paper);
   --color-work-input: var(--work-input);
@@ -21,6 +22,7 @@
   --color-work-selected: var(--work-selected);
   --color-work-hover: var(--work-hover);
   --color-work-primary: var(--work-primary);
+  --color-work-clay: var(--work-clay-ink);
   --color-work-danger: var(--work-danger-ink);
   --color-work-danger-bg: var(--work-danger-bg);
   --color-work-danger-line: var(--work-danger-line);
@@ -34,25 +36,28 @@
 
 @layer components {
   :root {
+    --work-canvas: #faf8f3;
     --work-paper: #ffffff;
-    --work-sidebar: #f8f7f4;
-    --work-surface: #f8f7f4;
+    --work-sidebar: #f3f2e9;
+    --work-surface: #f4f0e7;
     --work-input: #ffffff;
-    --work-ink: #242321;
-    --work-muted: #615b55;
-    --work-line: #e4dfd8;
-    --work-rule: #b4a99d;
+    --work-ink: #2c3028;
+    --work-muted: #605b51;
+    --work-line: #ded9cd;
+    --work-rule: #b8b1a1;
     --work-control: #8c8278;
     --work-danger-line: #d5a0a6;
     --work-warning-line: #d6b778;
     --work-positive-line: #a2c2af;
-    --work-hover: #f5f1ec;
-    --work-link: #694e69;
-    --work-selected: #eee6f0;
-    --work-primary: #694e69;
-    --work-primary-hover: #563c56;
-    --work-primary-pressed: #473147;
-    --work-focus: #694e69;
+    --work-hover: #f0efe6;
+    --work-selected: #e9eee3;
+    --work-primary: #516e41;
+    --work-link: var(--work-primary);
+    --work-primary-hover: #435a36;
+    --work-primary-pressed: #364a2b;
+    --work-focus: var(--work-primary);
+    --work-clay: #c1693c;
+    --work-clay-ink: #994b2c;
     --work-danger-ink: #9b303b;
     --work-danger-bg: #fbecee;
     --work-warning-ink: #795023;
@@ -76,6 +81,43 @@
     font-family: "Workspace Noto Serif TC", "Songti TC", "Noto Serif TC", serif;
     font-size: clamp(1.5rem, 1.16rem + 1.25vw, 2.25rem);
     line-height: 1.35;
+  }
+
+  .workspace-header {
+    position: relative;
+    padding: clamp(1rem, 2.5vw, 2.125rem) clamp(1rem, 3vw, 2.5rem);
+    border-bottom: 1px solid var(--work-line);
+    background: linear-gradient(110deg, var(--work-selected), var(--work-canvas) 78%);
+  }
+
+  .workspace-header::before,
+  .auth-card::before {
+    content: "";
+    display: block;
+    width: 2.25rem;
+    height: 2px;
+    background: var(--work-clay);
+  }
+
+  .workspace-header::before {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: clamp(1rem, 3vw, 2.5rem);
+  }
+
+  .workspace-header .workspace-heading {
+    font-size: clamp(1.75rem, 1.2rem + 2vw, 2.875rem);
+    overflow-wrap: anywhere;
+  }
+
+  .auth-card::before {
+    margin-bottom: 1rem;
+  }
+
+  .workspace-metric {
+    font-size: clamp(1.15rem, 0.9rem + 0.8vw, 1.85rem);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
 
   .workspace-nav[aria-current="page"],

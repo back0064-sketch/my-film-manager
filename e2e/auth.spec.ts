@@ -38,10 +38,10 @@ test('登入確認、密碼重設和錯誤頁都沿用暖白主題', async ({ pa
   });
   await page.route('**/api/auth/options', (route) => route.fulfill({ json: { googleEnabled: true } }));
   await page.goto('/');
-  const paper = 'rgb(255, 255, 255)';
+  const canvas = 'rgb(250, 248, 243)';
   const main = page.getByRole('main');
   await expect(main).toContainText('登入狀態確認中…');
-  await expect(main).toHaveCSS('background-color', paper);
+  await expect(main).toHaveCSS('background-color', canvas);
   releaseSession();
   await expect(page.getByRole('heading', { name: /影視製片控制台/ })).toHaveCSS('font-family', /Workspace Noto Serif TC/);
   await page.getByRole('button', { name: '忘記密碼？' }).click();
@@ -55,6 +55,6 @@ test('登入確認、密碼重設和錯誤頁都沿用暖白主題', async ({ pa
   ]) {
     await page.goto(path);
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
-    await expect(main).toHaveCSS('background-color', paper);
+    await expect(main).toHaveCSS('background-color', canvas);
   }
 });
