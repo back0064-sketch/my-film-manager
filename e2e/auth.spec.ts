@@ -27,3 +27,34 @@ test('Google 登入依伺服器設定顯示', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('link', { name: '使用 Google 帳號登入' })).toHaveAttribute('href', '/api/auth/google');
 });
+
+test('登入確認、密碼重設和錯誤頁都沿用暖白主題', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  let releaseSession!: () => void;
+  const pendingSession = new Promise<void>((resolve) => { releaseSession = resolve; });
+  await page.route('**/api/auth/session', async (route) => {
+    await pendingSession;
+    return route.fulfill({ json: null });
+  });
+  await page.route('**/api/auth/options', (route) => route.fulfill({ json: { googleEnabled: true } }));
+  await page.goto('/');
+  const paper = 'rgb(255, 255, 255)';
+  const main = page.getByRole('main');
+  await expect(main).toContainText('登入狀態確認中…');
+  await expect(main).toHaveCSS('background-color', paper);
+  releaseSession();
+  await expect(page.getByRole('heading', { name: /影視製片控制台/ })).toHaveCSS('font-family', /Workspace Noto Serif TC/);
+  await page.getByRole('button', { name: '忘記密碼？' }).click();
+  await expect(page.getByRole('button', { name: '寄送重設連結' })).toHaveCSS('border-top-left-radius', '999px');
+
+  for (const [path, heading] of [
+    ['/auth/reset', '重設登入密碼'],
+    ['/auth/auth-code-error', '重設連結已失效'],
+    ['/auth/login-error', 'Google 登入未完成'],
+    ['/missing-for-theme-test', '找不到頁面'],
+  ]) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+    await expect(main).toHaveCSS('background-color', paper);
+  }
+});

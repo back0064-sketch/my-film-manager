@@ -4,8 +4,8 @@
   font-weight: 600;
   font-style: normal;
   font-display: swap;
-  /* Only the characters used in the two preview headings. */
-  unicode-range: U+4F5C, U+53F0, U+5BA2, U+5C08, U+5DE5, U+6236, U+6848, U+8207;
+  /* Subset for the static Traditional Chinese interface headings. */
+  unicode-range: U+47, U+65, U+67, U+6C, U+6F, U+4E0D, U+4E8C, U+4F5C, U+5165, U+5168, U+5230, U+5236, U+52D9, U+53F0, U+5931, U+5B89, U+5B8C, U+5B9A, U+5BA2, U+5BC6, U+5C08, U+5C64, U+5DE5, U+5DF2, U+5E33, U+5F71, U+614B, U+6210, U+6236, U+627E, U+63A7, U+6548, U+672A, U+6848, U+6B3E, U+6CD5, U+7121, U+7247, U+72C0, U+767B, U+76EE, U+78BA, U+78BC, U+7B2C, U+7D50, U+8207, U+865F, U+88FD, U+8981, U+8996, U+8A2D, U+8A8D, U+8B49, U+8CA1, U+8FFD, U+9023, U+91CD, U+9700, U+9762, U+9801, U+9A57;
 }
 
 @theme inline {
@@ -18,37 +18,22 @@
   --color-work-rule: var(--work-rule);
   --color-work-control: var(--work-control);
   --color-work-link: var(--work-link);
+  --color-work-selected: var(--work-selected);
+  --color-work-hover: var(--work-hover);
+  --color-work-primary: var(--work-primary);
+  --color-work-danger: var(--work-danger-ink);
+  --color-work-danger-bg: var(--work-danger-bg);
+  --color-work-danger-line: var(--work-danger-line);
+  --color-work-warning: var(--work-warning-ink);
+  --color-work-warning-bg: var(--work-warning-bg);
+  --color-work-warning-line: var(--work-warning-line);
+  --color-work-positive: var(--work-positive-ink);
+  --color-work-positive-bg: var(--work-positive-bg);
+  --color-work-positive-line: var(--work-positive-line);
 }
 
 @layer components {
-  .client-dashboard {
-    --work-paper: #020617;
-    --work-sidebar: #020617f2;
-    --work-surface: #0b1223;
-    --work-input: #020617;
-    --work-ink: #f1f5f9;
-    --work-muted: #94a3b8;
-    --work-line: #1e293b;
-    --work-rule: #334155;
-    --work-control: #475569;
-    --work-hover: #1e293b;
-    --work-link: #c7d2fe;
-    --work-selected: #1e1b4b;
-    --work-primary: #4f46e5;
-    --work-primary-hover: #4338ca;
-    --work-primary-pressed: #3730a3;
-    --work-focus: #a5b4fc;
-    --work-danger-ink: #fda4af;
-    --work-danger-bg: #401624;
-    --work-warning-ink: #fde68a;
-    --work-warning-bg: #38280f;
-    --work-positive-ink: #6ee7b7;
-    background: var(--work-paper);
-    color: var(--work-ink);
-    color-scheme: dark;
-  }
-
-  .client-dashboard[data-theme="editorial"] {
+  :root {
     --work-paper: #ffffff;
     --work-sidebar: #f8f7f4;
     --work-surface: #f8f7f4;
@@ -58,6 +43,9 @@
     --work-line: #e4dfd8;
     --work-rule: #b4a99d;
     --work-control: #8c8278;
+    --work-danger-line: #d5a0a6;
+    --work-warning-line: #d6b778;
+    --work-positive-line: #a2c2af;
     --work-hover: #f5f1ec;
     --work-link: #694e69;
     --work-selected: #eee6f0;
@@ -70,6 +58,7 @@
     --work-warning-ink: #795023;
     --work-warning-bg: #fcf3dd;
     --work-positive-ink: #2d6952;
+    --work-positive-bg: #eaf4ed;
     color-scheme: light;
   }
 
@@ -83,27 +72,21 @@
     background: var(--work-selected);
   }
 
-  [data-theme="editorial"] .workspace-heading {
+  .workspace-heading {
     font-family: "Workspace Noto Serif TC", "Songti TC", "Noto Serif TC", serif;
     font-size: clamp(1.5rem, 1.16rem + 1.25vw, 2.25rem);
     line-height: 1.35;
-  }
-
-  .workspace-nav {
-    color: var(--work-muted);
-    border-color: transparent;
   }
 
   .workspace-nav[aria-current="page"],
   .workspace-filter[aria-pressed="true"] {
     color: var(--work-link);
     background: var(--work-selected);
-    border-color: var(--work-link);
   }
 
-  .workspace-filter {
+  .workspace-filter,
+  .workspace-nav {
     color: var(--work-muted);
-    border: 1px solid transparent;
   }
 
   .workspace-button,
@@ -117,18 +100,12 @@
   .workspace-button,
   .workspace-filter,
   .workspace-nav {
-    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
   }
 
   .workspace-button {
-    border: 1px solid var(--work-control);
     color: var(--work-ink);
-  }
-
-  .workspace-button--primary {
-    border-color: transparent;
-    background: var(--work-primary);
-    color: white;
   }
 
   .workspace-button--quiet {
@@ -149,69 +126,47 @@
     transition: transform 160ms ease;
   }
 
-  .workspace-button--primary:active:not(:disabled) {
-    background: var(--work-primary-pressed);
-  }
-
-  [data-theme="editorial"] :is(.workspace-button, .workspace-filter, .workspace-nav) {
-    border-color: transparent;
-    border-radius: 999px;
-  }
-
-  [data-theme="editorial"] .workspace-button--primary {
+  .workspace-button--primary {
     background: transparent;
     color: var(--work-link);
   }
 
-  [data-theme="editorial"] :is(.workspace-button, .workspace-filter, .workspace-nav):active:not(:disabled) {
+  :is(.workspace-button, .workspace-filter, .workspace-nav):active:not(:disabled) {
     background: var(--work-selected);
   }
 
-  [data-theme="editorial"] .workspace-button--primary:is(:active, :focus-visible):not(:disabled) {
+  .workspace-button--primary:is(:active, :focus-visible):not(:disabled) {
     background: var(--work-primary-pressed);
     color: white;
   }
 
-  .client-dashboard :where(button, a, input, select):focus-visible {
+  :where(button, a, input, select, textarea, summary):focus-visible {
     outline: 2px solid var(--work-focus);
     outline-offset: 2px;
   }
 
   .workspace-panel {
-    border: 1px solid var(--work-line);
-    border-radius: 1rem;
-    background: var(--work-surface);
+    border-top: 1px solid var(--work-rule);
+    background: var(--work-paper);
   }
 
-  [data-theme="editorial"] .workspace-panel {
-    border-width: 1px 0 0;
-    border-radius: 0;
-    border-color: var(--work-rule);
+  .auth-card {
+    border: 1px solid var(--work-line);
+    border-radius: 1.25rem;
     background: var(--work-paper);
   }
 
   .workspace-row-list {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.5rem;
+    border-bottom: 1px solid var(--work-line);
   }
 
   .workspace-row {
     min-width: 0;
-    border: 1px solid var(--work-line);
-    border-radius: 0.5rem;
+    border-top: 1px solid var(--work-line);
     background: var(--work-input);
     color: var(--work-ink);
-  }
-
-  [data-theme="editorial"] .workspace-row-list {
-    gap: 0;
-    border-bottom: 1px solid var(--work-line);
-  }
-
-  [data-theme="editorial"] .workspace-row {
-    border-width: 1px 0 0;
-    border-radius: 0;
   }
 
   .client-dashboard .project-client-group {
@@ -237,23 +192,19 @@
       background: var(--work-danger-bg);
     }
 
-    .workspace-button--primary:hover:not(:disabled, :active) {
-      background: var(--work-primary-hover);
-    }
-
     .workspace-button--primary:hover:not(:disabled) .workspace-arrow {
       transform: translateX(2px);
     }
 
-    [data-theme="editorial"] :is(.workspace-button, .workspace-filter, .workspace-nav):hover:not(:disabled) {
+    :is(.workspace-button, .workspace-filter, .workspace-nav):hover:not(:disabled) {
       border-color: var(--work-link);
     }
 
-    [data-theme="editorial"] .workspace-button--danger:hover:not(:disabled) {
+    .workspace-button--danger:hover:not(:disabled) {
       border-color: var(--work-danger-ink);
     }
 
-    [data-theme="editorial"] .workspace-button--primary:hover:not(:disabled, :active) {
+    .workspace-button--primary:hover:not(:disabled, :active) {
       background: var(--work-primary-hover);
       color: white;
     }

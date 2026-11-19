@@ -304,3 +304,37 @@ test('暖白按鈕平時無框，以膠囊回應滑鼠和鍵盤', async ({ page 
   await expect(page.getByRole('heading', { name: '客戶與專案' })).toBeVisible();
   await expect(page.getByLabel('專案名稱', { exact: true })).toBeVisible();
 });
+
+test('深色系統設定下，大廳、看板、月結、財務和設定仍採暖白介面', async ({ page }) => {
+  await mockApi(page);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  const paper = 'rgb(255, 255, 255)';
+  const nav = page.getByRole('navigation', { name: '工作區導覽' });
+  const main = page.getByRole('main');
+  await expect(page.locator('body')).toHaveCSS('background-color', paper);
+  await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
+
+  await nav.getByRole('button', { name: '設定', exact: true }).click();
+  await expect(main).toHaveCSS('background-color', paper);
+  await expect(page.getByRole('region', { name: '帳號安全與 MFA' })).toHaveCSS('background-color', paper);
+  await expect(page.getByRole('link', { name: '下載營運備份' })).toHaveCSS('border-top-left-radius', '999px');
+
+  await nav.getByRole('button', { name: '財務', exact: true }).click();
+  await expect(main).toHaveCSS('background-color', paper);
+  await expect(page.getByRole('region', { name: '跨專案追款' })).toHaveCSS('background-color', paper);
+
+  await nav.getByRole('button', { name: '專案', exact: true }).click();
+  await page.getByRole('button', { name: project.name, exact: true }).click();
+  const settlement = page.getByRole('region', { name: '專案月結' });
+  await expect(settlement).toHaveCSS('background-color', paper);
+  await expect(main).toHaveCSS('background-color', paper);
+  await expect(settlement.getByRole('button', { name: '完成本月結案' })).toHaveCSS('border-top-left-radius', '999px');
+  await page.getByRole('button', { name: '💰 財務帳目', exact: true }).click();
+  await expect(page.getByRole('region', { name: '月份財務報表' })).toHaveCSS('background-color', paper);
+  await expect(main).toHaveCSS('background-color', paper);
+  if ((page.viewportSize()?.width ?? 0) < 600) {
+    const title = await page.getByRole('heading', { name: /財務帳目/ }).boundingBox();
+    expect(title?.height).toBeLessThan(48);
+  }
+});

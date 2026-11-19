@@ -290,7 +290,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
   };
 
   return (
-    <main className="client-dashboard min-h-screen" data-theme={section === 'work' || section === 'projects' ? 'editorial' : undefined}>
+    <main className="client-dashboard min-h-screen bg-work-paper">
       <div className="mx-auto grid min-h-screen max-w-[112rem] grid-rows-[auto_1fr] lg:grid-rows-1 lg:grid-cols-[13rem_minmax(0,1fr)] 2xl:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="workspace-sidebar sticky top-0 z-10 self-start border-b px-4 pb-2 backdrop-blur lg:flex lg:min-h-screen lg:flex-col lg:border-r lg:border-b-0 lg:p-5">
           <div className="flex min-h-12 items-center gap-2.5 py-2 lg:mb-8 lg:px-2">
@@ -333,12 +333,12 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
           {(section === 'settings' || settingsVisited) && (
             <div hidden={section !== 'settings'} className="grid items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
               <MfaPanel />
-              <section aria-label="帳號與備份" className="rounded-2xl border border-slate-800 bg-slate-900/55 p-4 sm:p-6">
+              <section aria-label="帳號與備份" className="rounded-2xl border border-work-line bg-work-surface p-4 sm:p-6">
                 <h2 className="text-lg font-semibold">帳號與備份</h2>
-                {userEmail && <p className="mt-2 break-all text-sm text-slate-400">{userEmail}</p>}
+                {userEmail && <p className="mt-2 break-all text-sm text-work-muted">{userEmail}</p>}
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <a href="/api/backups/download" download className={secondaryButton}>下載營運備份</a>
-                  <button type="button" onClick={onSignOut} className="rounded-lg px-3 py-2.5 text-sm font-semibold text-rose-300 hover:bg-rose-950/35">登出</button>
+                  <button type="button" onClick={onSignOut} className="workspace-button workspace-button--danger px-3 py-2.5 text-sm font-semibold">登出</button>
                 </div>
               </section>
             </div>
@@ -421,7 +421,7 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
                           <article key={project.id} onClick={() => onOpenProject(project.id)} className="project-card flex min-w-0 cursor-pointer items-start justify-between gap-2 rounded-xl border border-work-line bg-work-input p-4 hover:border-work-control">
                             <div className="min-w-0">
                               <h3 className="break-words font-semibold">
-                                <button type="button" onClick={(event) => { event.stopPropagation(); onOpenProject(project.id); }} className="text-left hover:text-work-link">{project.name}</button>
+                                <button type="button" onClick={(event) => { event.stopPropagation(); onOpenProject(project.id); }} className="workspace-button text-left hover:text-work-link px-2 py-1">{project.name}</button>
                               </h3>
                               <p className="mt-1 text-xs text-work-muted">
                                 {project.archivedAt && <span className="text-work-link">已歸檔 · </span>}
@@ -457,6 +457,6 @@ export function ClientDashboard({ userId, userEmail, section, onSectionChange, o
           </section>}
         </div>
       </div>
-      {pendingDeletion && <div className="fixed bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm shadow-xl sm:bottom-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:px-5"><span className="min-w-0 truncate">已刪除「{pendingDeletion.name}」</span><button onClick={restoreProject} className="shrink-0 font-bold text-indigo-400 hover:text-indigo-300">復原</button></div>}<Toast message={toast} onDismiss={dismissToast} /></main>
+      {pendingDeletion && <div className="fixed bottom-4 left-4 right-4 z-10 flex items-center justify-between gap-3 rounded-xl border border-work-control bg-work-surface px-4 py-3 text-sm shadow-xl sm:bottom-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:px-5"><span className="min-w-0 truncate">已刪除「{pendingDeletion.name}」</span><button onClick={restoreProject} className="workspace-button shrink-0 font-bold px-2 py-1">復原</button></div>}<Toast message={toast} onDismiss={dismissToast} /></main>
   );
 }
